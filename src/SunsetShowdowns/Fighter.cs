@@ -317,6 +317,12 @@ namespace LLD
         /// Hip, knee and ankle of one leg, exactly where they are drawn. Both the artwork and the
         /// hit volumes come from here, so the boxes always sit on the man you can see.
         /// </summary>
+        // How wide the leg is at each landmark. One set of numbers so the drawing, the hit
+        // volumes and the downed body all agree about the shape of the limb.
+        public const float ThighTop = 17f, ThighLow = 13.5f, CalfTop = 13f, AnkleW = 9.5f;
+        // how far forward a standing knee sits off the hip-to-ankle line
+        public const float KneeBreak = 23f;
+
         public void LegJoints(int i, out Vector2 hip, out Vector2 knee, out Vector2 ankle)
         {
             const float Thigh = 103f, Shin = 101f;
@@ -330,6 +336,23 @@ namespace LLD
             if (len > reach && len > 0.001f) ankle = hip + d / len * reach;
 
             knee = SolveKnee(hip, ankle, Thigh * Scale, Shin * Scale, Face);
+
+            // Stood up straight, hip and ankle are nearly as far apart as the two bones are
+            // long, so the solve has almost nothing to work with and the knee comes out all
+            // but on the line between them - which is what made the leg read as a post. Hold
+            // it out to where a standing knee actually sits. The moment the leg is genuinely
+            // bent the solve is already further forward than this and nothing here applies.
+            Vector2 axis = ankle - hip;
+            float alen = axis.Length();
+            if (alen > 0.001f)
+            {
+                axis /= alen;
+                Vector2 fwd = new Vector2(axis.Y, -axis.X) * Face;
+                float got = Vector2.Dot(knee - hip, fwd);
+                float want = KneeBreak * Scale;
+                if (got < want) knee += fwd * (want - got);
+            }
+
             if (Kneel > 0.01f) knee += new Vector2(Face * 18f * Kneel * Scale, 10f * Kneel * Scale);
         }
 
@@ -340,8 +363,8 @@ namespace LLD
             {
                 list.Add(new HitVolume { Zone = Zone.Head, A = Doll.Pos[Ragdoll.Head], B = Doll.Pos[Ragdoll.Neck], R = 30f * Scale });
                 list.Add(new HitVolume { Zone = Zone.Torso, A = Doll.Pos[Ragdoll.Chest], B = Doll.Pos[Ragdoll.Pelvis], R = 34f * Scale });
-                list.Add(new HitVolume { Zone = Zone.Leg, A = Doll.Pos[Ragdoll.Pelvis], B = Doll.Pos[Ragdoll.KneeF], R = 19f * Scale });
-                list.Add(new HitVolume { Zone = Zone.Leg, A = Doll.Pos[Ragdoll.KneeF], B = Doll.Pos[Ragdoll.FootF], R = 17f * Scale });
+                list.Add(new HitVolume { Zone = Zone.Leg, A = Doll.Pos[Ragdoll.Pelvis], B = Doll.Pos[Ragdoll.KneeF], R = 15f * Scale });
+                list.Add(new HitVolume { Zone = Zone.Leg, A = Doll.Pos[Ragdoll.KneeF], B = Doll.Pos[Ragdoll.FootF], R = 11f * Scale });
                 return list;
             }
 
@@ -356,8 +379,8 @@ namespace LLD
             for (int i = 0; i < 2; i++)
             {
                 LegJoints(i, out Vector2 hip, out Vector2 knee, out Vector2 ankle);
-                list.Add(new HitVolume { Zone = Zone.Leg, A = hip, B = knee, R = 20f * Scale });
-                list.Add(new HitVolume { Zone = Zone.Leg, A = knee, B = ankle, R = 16f * Scale });
+                list.Add(new HitVolume { Zone = Zone.Leg, A = hip, B = knee, R = 15f * Scale });
+                list.Add(new HitVolume { Zone = Zone.Leg, A = knee, B = ankle, R = 11f * Scale });
             }
             list.Add(new HitVolume { Zone = Zone.Arm, A = Arm.Shoulder, B = Arm.Elbow, R = 15f * Scale });
             list.Add(new HitVolume { Zone = Zone.Arm, A = Arm.Elbow, B = Arm.Hand, R = 14f * Scale });
@@ -1059,8 +1082,12 @@ namespace LLD
         void DrawLeg(Func<float, float, Vector2> Lp, int leg, Color pants, Color boot)
         {
             LegJoints(leg, out Vector2 hip, out Vector2 knee, out Vector2 ankle);
-            Art.CapsuleInked(hip, knee, 20f * Scale, pants);
-            Art.CapsuleInked(knee, ankle, 16f * Scale, pants);
+            // A leg is not a pipe. The thigh is at its thickest where it leaves the seat and
+            // narrows into the knee; the calf picks up again just below the knee and runs down
+            // to an ankle barely half the width. Drawn as two even capsules it had no knee at
+            // all, which is what made the man look like he was standing on two posts.
+            Art.TaperInked(hip, knee, ThighTop * Scale, ThighLow * Scale, pants);
+            Art.TaperInked(knee, ankle, CalfTop * Scale, AnkleW * Scale, pants);
 
             // the boot belongs to the ground, not to the body, so it is drawn in world space
             float s = Scale;
@@ -1186,8 +1213,8 @@ namespace LLD
             Art.CapsuleInked(d.Pos[Ragdoll.ElbowB], d.Pos[Ragdoll.HandB], 12f * Scale, P.ShirtDark);
             DrawFist(d.Pos[Ragdoll.HandB], HandAngle(d.Pos[Ragdoll.ElbowB], d.Pos[Ragdoll.HandB]), Art.Shade(P.Hand, 0.86f), 0.9f, P.Gloved, false);
 
-            Art.CapsuleInked(pelvis, d.Pos[Ragdoll.KneeB], 20f * Scale, P.PantsDark);
-            Art.CapsuleInked(d.Pos[Ragdoll.KneeB], d.Pos[Ragdoll.FootB], 16f * Scale, P.PantsDark);
+            Art.TaperInked(pelvis, d.Pos[Ragdoll.KneeB], ThighTop * Scale, ThighLow * Scale, P.PantsDark);
+            Art.TaperInked(d.Pos[Ragdoll.KneeB], d.Pos[Ragdoll.FootB], CalfTop * Scale, AnkleW * Scale, P.PantsDark);
             Art.CircleInked(d.Pos[Ragdoll.FootB], 17f * Scale, Art.Shade(P.Boots, 0.82f), 3f);
 
             Vector2 axis = chest - pelvis;
@@ -1198,8 +1225,8 @@ namespace LLD
             Art.Shape(new[] { pelvis + side * 1.04f + axis * 0.07f, pelvis - side * 1.04f + axis * 0.07f, pelvis - side * 1.04f - axis * 0.07f, pelvis + side * 1.04f - axis * 0.07f },
                 new Color(66, 44, 30, 255), 3f);
 
-            Art.CapsuleInked(pelvis, d.Pos[Ragdoll.KneeF], 20f * Scale, P.Pants);
-            Art.CapsuleInked(d.Pos[Ragdoll.KneeF], d.Pos[Ragdoll.FootF], 16f * Scale, P.Pants);
+            Art.TaperInked(pelvis, d.Pos[Ragdoll.KneeF], ThighTop * Scale, ThighLow * Scale, P.Pants);
+            Art.TaperInked(d.Pos[Ragdoll.KneeF], d.Pos[Ragdoll.FootF], CalfTop * Scale, AnkleW * Scale, P.Pants);
             Art.CircleInked(d.Pos[Ragdoll.FootF], 17f * Scale, P.Boots, 3f);
 
             Vector2 hUp = d.HeadUp;

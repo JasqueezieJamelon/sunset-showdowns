@@ -99,6 +99,32 @@ namespace LLD
             Capsule(a, b, r, fill);
         }
 
+        /// <summary>
+        /// A limb that is thicker at one end than the other: a thigh off the hip, a calf off the
+        /// knee. A plain capsule is the same width all the way down, which is why a leg drawn
+        /// out of two of them reads as a pipe instead of a leg.
+        /// </summary>
+        public static void Taper(Vector2 a, Vector2 b, float ra, float rb, Color c)
+        {
+            Vector2 d = b - a;
+            float len = d.Length();
+            if (len < 0.001f) { Raylib.DrawCircleV(a, MathF.Max(ra, rb), c); return; }
+            Vector2 n = new Vector2(-d.Y, d.X) / len;
+            Poly(new[] { a + n * ra, b + n * rb, b - n * rb, a - n * ra }, c);
+            Raylib.DrawCircleV(a, ra, c);
+            Raylib.DrawCircleV(b, rb, c);
+        }
+
+        public static void TaperInked(Vector2 a, Vector2 b, float ra, float rb, Color fill, float outline = 3.5f)
+        {
+            if (InkPass)
+            {
+                if (outline > 0f) Taper(a, b, ra + outline, rb + outline, Ink);
+                return;
+            }
+            Taper(a, b, ra, rb, fill);
+        }
+
         public static void CircleInked(Vector2 c, float r, Color fill, float outline = 3.5f)
         {
             if (InkPass)

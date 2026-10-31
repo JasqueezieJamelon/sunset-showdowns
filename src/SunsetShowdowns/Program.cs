@@ -38,7 +38,7 @@ namespace LLD
     public class App
     {
         /// Bumped by the last digit on every change. Stays on 0.1.x until told otherwise.
-        public const string Version = "0.1.4.7";
+        public const string Version = "0.1.4.8";
 
         Settings S;
         RenderTexture2D _scene;
@@ -2025,6 +2025,16 @@ namespace LLD
                 Console.WriteLine($"[check] stands still: {q.Steps - s0} steps in 2s, hips {hips:0}," +
                     $" weight {lever:0}px off his boots, drifted {drift:0}px, stance {q.Stance:0}" +
                     (ok ? " - ok" : "  FAIL"));
+
+                // Where the leg actually lands, in the body's own units, so the drawing can be
+                // checked against a sketch instead of against an opinion. The knee has to break
+                // forward of the hip without shoving out past the belt.
+                q.LegJoints(1, out var lh, out var lk, out var la);
+                Vector2 h2 = q.W2L(lh), k2 = q.W2L(lk), a2 = q.W2L(la);
+                bool kneeOk = k2.X - h2.X > 10f && k2.X < 46f && k2.Y > -130f && k2.Y < -95f;
+                Console.WriteLine($"[check] front leg: hip ({h2.X:0},{h2.Y:0}) knee ({k2.X:0},{k2.Y:0})" +
+                    $" ankle ({a2.X:0},{a2.Y:0}), knee breaks {k2.X - h2.X:0} forward" +
+                    (kneeOk ? " - ok" : "  FAIL"));
             }
 
             // A stagger has to end. Either he catches himself and stands still again, or he
