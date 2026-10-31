@@ -198,6 +198,7 @@ namespace LLD
             Collapsed = s.Down;
             Killed = s.Dead;
         }
+        float _stagger;             // how fast he is running out of steps
         float _sagging;             // how long his hips have been down near the dirt
         public float Muscle = 1f;          // 1 standing strong, 0 limp
         public const float SpineLen = 112f;
@@ -685,6 +686,7 @@ namespace LLD
             // shock takes the strength out of him, and a man with a leg gone has nothing left
             // to stand on at all
             float wantM = 1f - Math.Clamp(Shock / 110f, 0f, 0.85f);
+            wantM *= Math.Clamp(Blood / 55f, 0.3f, 1f);    // bleeding out takes the starch out of him
             if (Crippled) wantM = 0f;
             Muscle += (wantM - Muscle) * (1f - MathF.Exp(-6f * dt));
 
@@ -735,6 +737,21 @@ namespace LLD
 
             _stepDelay = MathF.Max(0f, _stepDelay - dt);
             float hurt = Math.Clamp(Impairment * 0.6f + Kneel * 0.3f, 0f, 1f);
+
+            // How badly he is losing it. One step is a man catching himself and it costs him
+            // nothing; three in a couple of seconds is a man who has already lost and has not
+            // worked it out yet. Without this he never runs out of steps - he just throws one
+            // leg out and plants it, over and over, upright and on the spot for ever, which
+            // reads as a bouncing boot rather than a man going over. Staggering has to end in
+            // the dirt or it is not staggering.
+            _stagger = MathF.Max(0f, _stagger - dt * 1.2f);
+            if (_stagger > 3.4f)
+            {
+                float way = PelvisV.X != 0f ? MathF.Sign(PelvisV.X) : Face;
+                Collapse(new Vector2(way, -0.2f),
+                         Math.Clamp(MathF.Abs(PelvisV.X) / 300f, 0.6f, 1.5f));
+                return;
+            }
 
             if (!Stepping && _stepDelay <= 0f)
             {
@@ -855,6 +872,7 @@ namespace LLD
             Doll.StepDur = Art.Lerp(0.20f, 0.34f, hurt) * Rng.F(0.85f, 1.15f);
             Doll.Asleep = false;
             Steps++;
+            _stagger += 1f;
         }
 
         // ---------- wound placement ----------

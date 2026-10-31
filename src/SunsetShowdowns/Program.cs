@@ -38,7 +38,7 @@ namespace LLD
     public class App
     {
         /// Bumped by the last digit on every change. Stays on 0.1.x until told otherwise.
-        public const string Version = "0.1.4.3";
+        public const string Version = "0.1.4.4";
 
         Settings S;
         RenderTexture2D _scene;
@@ -2024,6 +2024,38 @@ namespace LLD
                 Console.WriteLine($"[check] stands still: {q.Steps - s0} steps in 2s, hips {hips:0}," +
                     $" weight {lever:0}px off his boots, drifted {drift:0}px, stance {q.Stance:0}" +
                     (ok ? " - ok" : "  FAIL"));
+            }
+
+            // A stagger has to end. Either he catches himself and stands still again, or he
+            // goes over - what he must never do is throw a leg out and plant it, over and
+            // over, on the spot and bolt upright, for as long as you care to watch.
+            {
+                int bouncing = 0, fell = 0, caught = 0;
+                for (int k = 0; k < 10; k++)
+                {
+                    // shot, bleeding and still on his feet - the state he was actually in
+                    var p = new Fighter(Roster.All[2], Scene.PlayerStand, 1);
+                    p.PelvisV = new Vector2((k < 5 ? -1f : 1f) * (160f + k * 70f), 0f);
+                    float shock = 45f + k * 6f, blood = 52f - k * 3f;
+                    for (float t = 0f; t < 8f; t += dt)
+                    {
+                        p.Shock = MathF.Max(p.Shock, shock);
+                        p.Blood = MathF.Min(p.Blood, blood);
+                        p.Update(dt, p.Arm.HolsterPoint, Fighter.ArmWeight, true);
+                    }
+                    int s1 = p.Steps;
+                    for (float t = 0f; t < 3f; t += dt)
+                    {
+                        p.Shock = MathF.Max(p.Shock, shock);
+                        p.Blood = MathF.Min(p.Blood, blood);
+                        p.Update(dt, p.Arm.HolsterPoint, Fighter.ArmWeight, true);
+                    }
+                    if (p.Down) fell++;
+                    else if (p.Steps == s1) caught++;
+                    else bouncing++;
+                }
+                Console.WriteLine($"[check] a stagger ends: {fell} went over, {caught} caught it," +
+                    $" {bouncing} still hopping" + (bouncing == 0 ? " - ok" : "  FAIL"));
             }
 
             // A man whose legs have given out has to go down. He used to sink until his hips

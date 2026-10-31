@@ -288,9 +288,9 @@ namespace LLD
             // Trunk: hold the chest over the hips at the angle he is trying for, and his head
             // over that. The head is the weakest of the three, so it is the first thing to loll.
             Vector2 up = Art.Rot(new Vector2(0f, -1f), Lean);
-            Pull(Chest, Pos[Pelvis] + up * SpineLen, 0.34f * m, 0.45f * m);
-            Pull(Neck, Pos[Chest] + up * NeckLen, 0.30f * m, 0.40f * m);
-            Pull(Head, Pos[Neck] + up * HeadLen, 0.22f * m, 0.35f * m);
+            Pull(Chest, Pos[Pelvis] + up * SpineLen, 0.17f * m * m, 0.26f * m);
+            Pull(Neck, Pos[Chest] + up * NeckLen, 0.15f * m * m, 0.24f * m);
+            Pull(Head, Pos[Neck] + up * HeadLen, 0.11f * m * m, 0.20f * m);
 
             // Knees. Left alone a planted leg folds under the weight before the hips get the
             // message, so the knee is held on the line from hip to ankle - on it, not a step
