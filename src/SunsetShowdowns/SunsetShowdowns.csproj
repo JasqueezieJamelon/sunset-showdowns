@@ -1,0 +1,46 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <AssemblyName>SunsetShowdowns</AssemblyName>
+    <RootNamespace>LLD</RootNamespace>
+    <Version>0.1.38</Version>
+    <!--
+      Windows shows this in the SmartScreen "More info" panel and in the file's Properties. A
+      blank publisher there reads as nothing at all; a filled-in one at least names the thing.
+      It does NOT remove the warning - only a bought code-signing certificate does that.
+    -->
+    <Product>Sunset Showdowns</Product>
+    <AssemblyTitle>Sunset Showdowns</AssemblyTitle>
+    <Company>Jasqueezie Jamelon</Company>
+    <Authors>Jasqueezie Jamelon</Authors>
+    <Description>A 2D quick-draw duelling game.</Description>
+    <Copyright>Copyright (c) 2026 Jasqueezie Jamelon</Copyright>
+    <FileVersion>0.1.38.0</FileVersion>
+    <AssemblyVersion>0.1.38.0</AssemblyVersion>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <!-- symbols live inside the exe, so a crash still reports line numbers from one file -->
+    <DebugType>embedded</DebugType>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>true</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="LiteNetLib" Version="2.1.5" />
+    <PackageReference Include="Raylib-cs" Version="8.1.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Assets\Rye-Regular.ttf" />
+    <EmbeddedResource Include="Assets\SpecialElite-Regular.ttf" />
+  </ItemGroup>
+
+</Project>
