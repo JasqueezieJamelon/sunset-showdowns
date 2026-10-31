@@ -1501,15 +1501,19 @@ namespace LLD
         {
             switch (Def.HatStyle)
             {
+                // The bowler and the preacher used to be pitched five units higher than the
+                // slouch hat, which left a strip of bare forehead showing between the brim and
+                // the hair: the hat read as hovering over the man rather than being worn by
+                // him. Both are seated down onto the skull.
                 case 1:
-                    Art.Shape(new[] { L(-38f, -30f), L(42f, -30f), L(40f, -40f), L(-36f, -40f) }, P.Hat, 3f);
-                    Art.Shape(new[] { L(-26f, -38f), L(-20f, -66f), L(26f, -66f), L(32f, -38f) }, P.Hat, 3.5f);
-                    Art.Seam(L(-25f, -42f), L(31f, -42f), 6f * Scale, P.HatBand);
+                    Art.Shape(new[] { L(-38f, -25f), L(42f, -25f), L(40f, -35f), L(-36f, -35f) }, P.Hat, 3f);
+                    Art.Shape(new[] { L(-26f, -33f), L(-20f, -61f), L(26f, -61f), L(32f, -33f) }, P.Hat, 3.5f);
+                    Art.Seam(L(-25f, -37f), L(31f, -37f), 6f * Scale, P.HatBand);
                     break;
                 case 2:
-                    Art.Shape(new[] { L(-52f, -32f), L(56f, -32f), L(54f, -44f), L(-50f, -44f) }, P.Hat, 3.5f);
-                    Art.Shape(new[] { L(-28f, -42f), L(-26f, -72f), L(28f, -72f), L(30f, -42f) }, P.Hat, 3.5f);
-                    Art.Seam(L(-27f, -48f), L(29f, -48f), 7f * Scale, P.HatBand);
+                    Art.Shape(new[] { L(-52f, -27f), L(56f, -27f), L(54f, -39f), L(-50f, -39f) }, P.Hat, 3.5f);
+                    Art.Shape(new[] { L(-28f, -37f), L(-26f, -67f), L(28f, -67f), L(30f, -37f) }, P.Hat, 3.5f);
+                    Art.Seam(L(-27f, -43f), L(29f, -43f), 7f * Scale, P.HatBand);
                     break;
                 case 3: break;
                 default:
