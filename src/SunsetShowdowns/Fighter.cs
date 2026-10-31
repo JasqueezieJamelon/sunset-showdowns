@@ -1174,7 +1174,7 @@ namespace LLD
             else
             {
                 // empty, but still the same hand - the shape only loses its trigger finger
-                DrawFist(Arm.Hand, HandAngle(Arm.Elbow, Arm.Hand), P.Hand, 0.95f, P.Gloved, false);
+                DrawFist(Arm.Hand, HandAngle(Arm.Elbow, Arm.Hand), P.Hand, 0.95f, P.Gloved, true);
             }
         }
 
@@ -1218,7 +1218,7 @@ namespace LLD
             {
                 Art.CapsuleInked(chest, d.Pos[Ragdoll.ElbowG], 15f * Scale, P.Shirt);
                 Art.CapsuleInked(d.Pos[Ragdoll.ElbowG], d.Pos[Ragdoll.HandG], 13f * Scale, P.Shirt);
-                DrawFist(d.Pos[Ragdoll.HandG], HandAngle(d.Pos[Ragdoll.ElbowG], d.Pos[Ragdoll.HandG]), P.Hand, 0.95f, P.Gloved, false);
+                DrawFist(d.Pos[Ragdoll.HandG], HandAngle(d.Pos[Ragdoll.ElbowG], d.Pos[Ragdoll.HandG]), P.Hand, 0.95f, P.Gloved, true);
             }
         }
 
@@ -1586,7 +1586,7 @@ namespace LLD
             if (!withHand) return;
 
             // the wrist sits down inside the fist, below and behind the gun's own origin
-            DrawFist(T(151f, 279f), angle, pal.Hand, scale, pal.Gloved, true);
+            DrawFist(T(151f, 279f), angle, pal.Hand, scale, pal.Gloved, true, true);
         }
 
         /// <summary>
@@ -1594,11 +1594,13 @@ namespace LLD
         /// <paramref name="angle"/>, so the same shape serves the fist round the revolver, the
         /// empty gun hand and the hand on the far arm - nobody has a plain circle for a hand.
         /// One chunky block with a heavy outline and a step where the index knuckle stands
-        /// proud. <paramref name="onGun"/> is the hand closed round the grip: it gets the
-        /// knuckle creases and the trigger finger, and a free hand gets neither, because on a
-        /// hand hanging at the hip the creases read as two scratches rather than fingers.
+        /// proud. <paramref name="gunHand"/> is his shooting hand, full or empty: it carries the
+        /// knuckle creases either way. The far hand does not, because hanging at the hip they
+        /// read as two scratches rather than fingers. <paramref name="onTrigger"/> adds the
+        /// index finger, which only exists when there is a trigger under it.
         /// </summary>
-        public void DrawFist(Vector2 wrist, float angle, Color hand, float scale, bool gloved, bool onGun)
+        public void DrawFist(Vector2 wrist, float angle, Color hand, float scale, bool gloved,
+                             bool gunHand, bool onTrigger = false)
         {
             float s = Scale * scale;
             Vector2 T(float x, float y) => wrist + Art.Rot(new Vector2(x, y * Face) * s, angle);
@@ -1608,28 +1610,32 @@ namespace LLD
                 T(-2f, -12f), T(12f, -11f), T(18f, -7f), T(11f, -1f),
                 T(17f, 5f), T(10f, 11f), T(6f, 17f), T(-5f, 14f), T(-9f, 0f),
             };
-            Art.Shape(pts, hand, 5f);
-            // The ink pass cannot give it an edge where it lies on the gun, because the grip is
-            // filled in afterwards and paints over it. Without this the fist and the grip merge
-            // into one brown lump with the revolver apparently resting on top of it.
-            if (!Art.InkPass) Art.PolyLine(pts, 3f, Art.Ink);
+            Vector2 fa = T(16f, -6f), fb = T(29f, -4f);
+            float fr = 2.8f * s;
 
-            if (onGun)
+            if (Art.InkPass)
             {
-                if (!Art.InkPass)
-                {
-                    var crease = Art.Shade(hand, 0.64f);
-                    Raylib.DrawLineEx(T(1f, -6f), T(8f, -7f), 2.2f * s, crease);
-                    Raylib.DrawLineEx(T(-1f, 4f), T(6f, 3f), 2.2f * s, crease);
-                }
-                // The index finger off the front of the fist, far enough forward to lie on the
-                // trigger. Its edge has to be painted in the colour pass too: the bow it crosses
-                // is filled in after the ink pass, which would otherwise wipe the ink off the
-                // finger and leave it a flat smear with no outline while the hand has one.
-                Vector2 fa = T(16f, -6f), fb = T(29f, -4f);
-                float fr = 2.8f * s;
-                Art.Capsule(fa, fb, fr + 2.5f, Art.Ink);
-                if (!Art.InkPass) Art.Capsule(fa, fb, fr, Art.Shade(hand, 1.06f));
+                Art.PolyLine(pts, 10f, Art.Ink);
+                Art.Poly(pts, Art.Ink);
+                if (onTrigger) Art.Capsule(fa, fb, fr + 2.5f, Art.Ink);
+                if (gloved) Art.Capsule(T(-5f, -3f), T(-9f, 7f), 7f * s + 2.5f, Art.Ink);
+                return;
+            }
+
+            // The hand needs an edge of its own in the colour pass: where it lies on the gun,
+            // the grip and the bow are filled in after the ink pass and paint over it.
+            // The finger's edge goes down in the same breath and both fills follow, so the two
+            // of them come out under one unbroken outline with no line drawn between them.
+            Art.PolyLine(pts, 3f, Art.Ink);
+            if (onTrigger) Art.Capsule(fa, fb, fr + 1.6f, Art.Ink);
+            Art.Poly(pts, hand);
+            if (onTrigger) Art.Capsule(fa, fb, fr, Art.Shade(hand, 1.06f));
+
+            if (gunHand)
+            {
+                var crease = Art.Shade(hand, 0.64f);
+                Raylib.DrawLineEx(T(1f, -6f), T(8f, -7f), 2.2f * s, crease);
+                Raylib.DrawLineEx(T(-1f, 4f), T(6f, 3f), 2.2f * s, crease);
             }
 
             // a glove shows where it ends: a cuff across the wrist
