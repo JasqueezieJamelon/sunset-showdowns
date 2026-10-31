@@ -1507,31 +1507,34 @@ namespace LLD
         /// The hair, in head space: +x towards the face, +y down, the skull a circle of 34
         /// about the origin, the brow around -16 and the ear at (-12, -2).
         ///
-        /// Every cut is ONE piece. It is drawn as the band between two edges walked front to
-        /// back: an outer one that follows the skull (and, for a long cut, carries on past it
-        /// down the neck), and an inner one that is simply where his hairline is. Built that
-        /// way the hair cannot come apart, because there are no separate parts to come apart -
-        /// the first version of this was two or three convex lumps laid next to each other,
-        /// and it read exactly like two or three lumps laid next to each other, with the skin
-        /// showing between them.
+        /// Every cut is ONE piece: the band between an outer edge that follows the skull - out
+        /// past it where the hair has bulk, and on down the neck for a long one - and an inner
+        /// edge that is simply where his hairline is. Nothing is assembled out of parts, so
+        /// there are no parts to come apart.
         ///
-        /// With a hat on, the inner edge is dropped to the brim line so that what is drawn is
-        /// only what hangs below the felt.
+        /// Note that hat style 3 is bareheaded: it draws no hat at all, so the hair must not be
+        /// cut off at a brim that is not there. Getting that wrong shaved every man in the game
+        /// who was not wearing a hat, and the plate that was supposed to catch it was drawing
+        /// its bareheaded row a different way from the game, so it showed nothing wrong.
         /// </summary>
         void DrawHair(Func<float, float, Vector2> L, bool withHat)
         {
-            const int N = 24;
+            const int N = 26;
             Color hair = P.Hair;
+            Color lit = Art.Shade(hair, 1.2f);
+            bool hatted = withHat && Def.HatStyle != 3;
 
-            // A run along the skull. 0 is straight out of his face, 90 the top of his head,
-            // 180 the back of it, and past that he is into the nape of his neck.
-            Vector2[] Arc(float fromDeg, float toDeg, float rad)
+            // A run along the skull, the radius easing from r0 through r1 to r2 so a cut can
+            // carry some bulk above the bone instead of being painted straight onto it.
+            Vector2[] Arc(float fromDeg, float toDeg, float r0, float r1, float r2)
             {
                 var p = new Vector2[N];
                 for (int i = 0; i < N; i++)
                 {
-                    float a = (fromDeg + (toDeg - fromDeg) * (i / (float)(N - 1))) * MathF.PI / 180f;
-                    p[i] = L(MathF.Cos(a) * rad, -MathF.Sin(a) * rad);
+                    float t = i / (float)(N - 1);
+                    float a = (fromDeg + (toDeg - fromDeg) * t) * MathF.PI / 180f;
+                    float r = t < 0.5f ? Art.Lerp(r0, r1, t * 2f) : Art.Lerp(r1, r2, (t - 0.5f) * 2f);
+                    p[i] = L(MathF.Cos(a) * r, -MathF.Sin(a) * r);
                 }
                 return p;
             }
@@ -1543,48 +1546,46 @@ namespace LLD
                 return Art.Along(p, N);
             }
 
-            // Outer and inner for the ordinary case, then a style tweaks them.
             Vector2[] outer, inner;
 
             switch (Def.HairStyle)
             {
-                case 1:     // swept: parted at the side and carried forward over the brow
-                    outer = Arc(20f, 200f, 35.5f);
-                    inner = Edge(30f, -11f, 21f, -18f, 6f, -22f, -8f, -17f, -19f, -7f, -26f, 5f);
+                case 1:     // swept: a deep side parting, the whole top carried forward and
+                            // down to a point above the eye. The one off the reference.
+                    outer = Arc(14f, 198f, 36f, 39f, 34.5f);
+                    inner = Edge(32f, -9f, 25f, -18f, 10f, -24f, -6f, -19f, -18f, -8f, -25f, 4f);
                     break;
 
-                case 2:     // slicked: combed back flat, the hairline high and peaked
-                    outer = Arc(26f, 198f, 34.5f);
-                    inner = Edge(29f, -16f, 24f, -23f, 8f, -25f, -8f, -19f, -19f, -8f, -25f, 4f);
+                case 2:     // slicked: flat to the bone and combed straight back, the hairline
+                            // high and gone at the corner
+                    outer = Arc(32f, 196f, 34f, 35f, 34f);
+                    inner = Edge(25f, -22f, 16f, -27f, 0f, -28f, -13f, -20f, -21f, -8f, -26f, 4f);
                     break;
 
-                case 3:     // long: over the top, round the back and down past the jaw
-                    outer = Art.Along(Join(Arc(28f, 186f, 35.5f),
-                                           Edge(-34f, 10f, -32f, 22f, -28f, 32f, -22f, 38f)), N);
-                    inner = Edge(28f, -17f, 14f, -21f, 0f, -21f, -8f, -12f, -10f, 2f, -12f, 16f, -16f, 28f, -20f, 36f);
+                case 3:     // long: over the crown, round the back, and down past the jaw
+                    outer = Art.Along(Join(Arc(28f, 186f, 35.5f, 37f, 36f),
+                                           Edge(-34f, 12f, -32f, 24f, -27f, 34f, -20f, 40f)), N);
+                    inner = Edge(28f, -17f, 14f, -22f, -2f, -22f, -9f, -12f, -11f, 2f, -13f, 17f, -17f, 29f, -19f, 38f);
                     break;
 
-                case 4:     // shaggy: no parting, hanging in points across the forehead
-                    outer = Arc(18f, 198f, 35.5f);
-                    inner = Edge(31f, -9f, 27f, -20f, 22f, -10f, 16f, -21f, 10f, -11f, 2f, -21f,
-                                 -10f, -16f, -20f, -6f, -26f, 5f);
+                case 4:     // shaggy: a big round mop, grown out and hanging in points
+                    outer = Arc(12f, 202f, 37f, 40f, 36f);
+                    inner = Edge(31f, -12f, 20f, -21f, 2f, -24f, -13f, -17f, -22f, -5f, -26f, 7f);
                     break;
 
-                case 5:     // balding: gone off the crown, a band left round the back
-                    outer = Arc(104f, 202f, 34.5f);
-                    inner = Edge(-6f, -23f, -16f, -16f, -23f, -6f, -26f, 6f);
+                case 5:     // balding: the crown gone, a band left from the temple round the back
+                    outer = Arc(98f, 204f, 34.5f, 35f, 34f);
+                    inner = Edge(-3f, -24f, -14f, -17f, -22f, -6f, -26f, 7f);
                     break;
 
-                default:    // cropped: short back and sides, nothing to comb
-                    outer = Arc(30f, 198f, 34.5f);
-                    inner = Edge(28f, -18f, 17f, -22f, 2f, -23f, -11f, -16f, -20f, -6f, -26f, 5f);
+                default:    // cropped: cut short and close, nothing to comb
+                    outer = Arc(34f, 198f, 34.5f, 35.5f, 34.5f);
+                    inner = Edge(27f, -20f, 16f, -25f, 0f, -26f, -14f, -19f, -22f, -7f, -26f, 5f);
                     break;
             }
 
-            // Under a brim only what hangs below it is worth drawing. Pulling the outer edge
-            // down to the brim leaves the back of the head, the sideburn and a long fall, and
-            // takes away the crown that the hat is covering anyway.
-            if (withHat)
+            // Under a real brim, only what hangs below the felt is worth drawing.
+            if (hatted)
             {
                 float brim = Def.HatStyle == 1 ? -25f : Def.HatStyle == 2 ? -27f : -20f;
                 Vector2 line = L(0f, brim), down = L(0f, brim + 1f) - line;
@@ -1597,19 +1598,32 @@ namespace LLD
 
             Art.Band(outer, inner, hair, 3f);
 
-            // A sideburn is part of the same head of hair, so it starts up inside the band
-            // rather than floating on his cheek the way it did.
-            if (Def.HairStyle == 1 || Def.HairStyle == 4)
-                Art.Shape(new[] { L(-12f, -20f), L(-1f, -18f), L(-2f, 8f), L(-13f, 7f) }, hair, 2.5f);
-
-            // the light caught along the top of a sweep
-            if (Def.HairStyle == 1 && !withHat && !Art.InkPass)
-                Art.Poly(new[] { L(2f, -29f), L(20f, -25f), L(27f, -15f), L(7f, -21f) }, Art.Shade(hair, 1.2f));
-            if (Def.HairStyle == 2 && !withHat && !Art.InkPass)
+            // The points of a shaggy cut go on over the band rather than being cut into its
+            // inner edge: a zig-zag edge runs out of step with the smooth one opposite it and
+            // the quads between them start crossing over, which is the tearing you could see.
+            if (Def.HairStyle == 4 && !hatted)
             {
-                Art.Seam(L(-16f, -26f), L(20f, -27f), 3f * Scale, Art.Shade(hair, 1.2f));
-                Art.Seam(L(-14f, -20f), L(25f, -22f), 2.5f * Scale, Art.Shade(hair, 1.2f));
+                Art.Shape(new[] { L(29f, -25f), L(33f, -15f), L(23f, -18f) }, hair, 2.5f);
+                Art.Shape(new[] { L(17f, -28f), L(22f, -14f), L(11f, -20f) }, hair, 2.5f);
+                Art.Shape(new[] { L(4f, -29f), L(8f, -15f), L(-1f, -21f) }, hair, 2.5f);
             }
+
+            // A sideburn belongs to the same head of hair, so it starts up inside the band.
+            if (Def.HairStyle == 1 || Def.HairStyle == 4)
+                Art.Shape(new[] { L(-14f, -18f), L(-4f, -15f), L(-7f, 9f), L(-13f, 9f) }, hair, 2.5f);
+
+            if (Art.InkPass || hatted) return;
+
+            // the light along the top of a sweep, and the comb marks in a slicked head
+            if (Def.HairStyle == 1)
+                Art.Poly(new[] { L(4f, -31f), L(23f, -26f), L(30f, -14f), L(9f, -22f) }, lit);
+            if (Def.HairStyle == 2)
+            {
+                Art.Seam(L(-16f, -29f), L(18f, -30f), 3f * Scale, lit);
+                Art.Seam(L(-15f, -23f), L(23f, -25f), 2.5f * Scale, lit);
+            }
+            if (Def.HairStyle == 0)
+                Art.Seam(L(-18f, -28f), L(14f, -27f), 2.5f * Scale, lit);
         }
 
         static Vector2[] Join(Vector2[] a, Vector2[] b)

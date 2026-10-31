@@ -1998,10 +1998,14 @@ namespace LLD
                     e.Def.HairStyle = i;
                     for (int row = 0; row < 2; row++)
                     {
+                        // Bareheaded goes through with the hat flag STILL SET, because that is
+                        // what the game does - style 3 simply draws no hat. Drawing this row
+                        // with the flag cleared is what let a bug that shaved every bareheaded
+                        // man in the game sail straight past this plate.
                         e.Def.HatStyle = row == 0 ? 3 : 0;
                         Vector2 hp = new Vector2(210f + i * 290f, 300f + row * 420f);
-                        Art.InkPass = true; e.DrawHeadOnly(hp, row == 1); Art.InkPass = false;
-                        e.DrawHeadOnly(hp, row == 1);
+                        Art.InkPass = true; e.DrawHeadOnly(hp, true); Art.InkPass = false;
+                        e.DrawHeadOnly(hp, true);
                     }
                 }
                 Raylib.EndTextureMode();
