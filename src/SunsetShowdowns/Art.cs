@@ -82,6 +82,68 @@ namespace LLD
             Raylib.DrawLineEx(a, b, thick, c);
         }
 
+        /// <summary>
+        /// The strip between an outer edge and an inner one, both walked in the same
+        /// direction and both the same length.
+        ///
+        /// <see cref="Shape"/> fills by fanning triangles out of the first corner, so it can
+        /// only ever draw something convex - a crescent or a cap handed to it comes back
+        /// folded over itself. That is why hair built out of Shape had to be two or three
+        /// separate lumps, and why it looked like two or three separate lumps. This fills as a
+        /// run of quads between the two edges, which can follow any shape at all, and inks the
+        /// whole rim in one line: one piece of hair with one outline round it.
+        /// </summary>
+        public static void Band(Vector2[] outer, Vector2[] inner, Color fill, float outline = 3.5f)
+        {
+            int n = Math.Min(outer.Length, inner.Length);
+            if (n < 2) return;
+
+            if (InkPass && outline > 0f)
+            {
+                var rim = new Vector2[n * 2];
+                for (int i = 0; i < n; i++) rim[i] = outer[i];
+                for (int i = 0; i < n; i++) rim[n + i] = inner[n - 1 - i];
+                PolyLine(rim, outline * 2f, Ink);
+            }
+
+            Color c = InkPass ? Ink : fill;
+            var quad = new Vector2[4];
+            for (int i = 0; i < n - 1; i++)
+            {
+                quad[0] = outer[i]; quad[1] = outer[i + 1];
+                quad[2] = inner[i + 1]; quad[3] = inner[i];
+                Poly(quad, c);
+            }
+        }
+
+        /// <summary>
+        /// Resample a sketched run of corners into <paramref name="n"/> evenly spaced points,
+        /// so an edge can be drawn with half a dozen corners and still line up point for point
+        /// with the one opposite it.
+        /// </summary>
+        public static Vector2[] Along(Vector2[] pts, int n)
+        {
+            var outp = new Vector2[n];
+            if (pts.Length == 0) return outp;
+            if (pts.Length == 1 || n == 1) { for (int i = 0; i < n; i++) outp[i] = pts[0]; return outp; }
+
+            float total = 0f;
+            var seg = new float[pts.Length - 1];
+            for (int i = 0; i < seg.Length; i++) { seg[i] = Vector2.Distance(pts[i], pts[i + 1]); total += seg[i]; }
+            if (total < 0.0001f) { for (int i = 0; i < n; i++) outp[i] = pts[0]; return outp; }
+
+            int at = 0;
+            float walked = 0f;
+            for (int i = 0; i < n; i++)
+            {
+                float want = total * i / (n - 1);
+                while (at < seg.Length - 1 && walked + seg[at] < want) { walked += seg[at]; at++; }
+                float t = seg[at] < 0.0001f ? 0f : (want - walked) / seg[at];
+                outp[i] = Vector2.Lerp(pts[at], pts[at + 1], Math.Clamp(t, 0f, 1f));
+            }
+            return outp;
+        }
+
         public static void Capsule(Vector2 a, Vector2 b, float r, Color c)
         {
             Raylib.DrawLineEx(a, b, r * 2f, c);
