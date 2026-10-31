@@ -32,10 +32,10 @@ namespace LLD
         public static string Message = "";
         public static float Progress;          // 0..1 while downloading
 
-        /// Default feed. A GitHub releases API url or a small json manifest both work;
-        /// override it with `updateUrl=` in settings.ini.
+        /// Default feed. A GitHub releases list, a single release, or a small json manifest all
+        /// work; override it with `updateUrl=` in settings.ini.
         public const string DefaultFeed =
-            "https://api.github.com/repos/JasqueezieJamelon/sunset-showdowns/releases/latest";
+            "https://api.github.com/repos/JasqueezieJamelon/sunset-showdowns/releases";
 
         static string TempDir => Path.Combine(Path.GetTempPath(), "SunsetShowdowns-update");
 
@@ -142,6 +142,15 @@ namespace LLD
             string json = await http.GetStringAsync(feed);
             using var doc = JsonDocument.Parse(json);
             var root = doc.RootElement;
+
+            // A list of releases, newest first. We ask for the list rather than for
+            // /releases/latest because that one leaves out anything flagged as a pre-release,
+            // and every 0.x build of this is one, so it would never find a thing.
+            if (root.ValueKind == JsonValueKind.Array)
+            {
+                if (root.GetArrayLength() == 0) return new UpdateInfo();
+                root = root[0];
+            }
 
             // a github release
             if (root.TryGetProperty("tag_name", out var tag))
