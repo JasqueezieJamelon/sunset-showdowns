@@ -38,7 +38,7 @@ namespace LLD
     public class App
     {
         /// Bumped by the last digit on every change. Stays on 0.1.x until told otherwise.
-        public const string Version = "0.1.4.0";
+        public const string Version = "0.1.4.1";
 
         Settings S;
         RenderTexture2D _scene;
@@ -1845,7 +1845,7 @@ namespace LLD
                 Vector2 above = hip - new Vector2(0f, 180f);
                 void Step(Vector2 m)
                 {
-                    hd.Enemy.Disarmed = true; hd.Enemy.DisarmTimer = 9f;
+                    hd.Enemy.Disarmed = true;
                     hd.Update(dt, m, false, false);
                 }
                 // waggle it sideways over the leather until it is out: sideways is never the
@@ -2006,6 +2006,64 @@ namespace LLD
                 _duel = keepDuel;
             }
             _net.Close(); _net = null;
+
+            // A man whose legs have given out has to go down. He used to sink until his hips
+            // were on the floor and then stand there for ever, throwing one boot out and
+            // planting it again, over and over, because the balance code never stopped trying.
+            {
+                var f = new Fighter(Roster.All[1], Scene.EnemyStand, -1);
+                f.PelvisV = new Vector2(-260f, 0f);         // shot, and carrying it backwards
+                for (float t = 0f; t < 6f; t += dt)
+                {
+                    f.Shock = 110f;                         // hold him at the edge of collapse
+                    f.Update(dt, f.Arm.HolsterPoint, Fighter.ArmWeight, true);
+                }
+                bool wentDown = f.Down;
+                int before = f.Steps;
+                float lo = 1e9f, hi = -1e9f;
+                for (float t = 0f; t < 2f; t += dt)
+                {
+                    f.Shock = 110f;
+                    f.Update(dt, f.Arm.HolsterPoint, Fighter.ArmWeight, true);
+                    float y = f.Down && f.Doll.Active ? f.Doll.Pos[Ragdoll.FootB].Y : f.FootWorld(0).Y;
+                    lo = MathF.Min(lo, y); hi = MathF.Max(hi, y);
+                }
+                bool ok = wentDown && (hi - lo) < 2f && f.Steps == before;
+                Console.WriteLine($"[check] legs give out: goes down={wentDown}," +
+                    $" foot wander {hi - lo:0.0}px over 2s, {f.Steps - before} more steps thrown" +
+                    (ok ? " - ok" : "  FAIL"));
+            }
+
+            // A man on the ground has to come to rest. He is allowed to be shoved about on his
+            // way down; what he is not allowed to do is lie there twitching a leg on the spot.
+            {
+                float worst = 0f; int awake = 0; const int tries = 24;
+                for (int k = 0; k < tries; k++)
+                {
+                    var sd = new Duel(Roster.All[0], S);
+                    for (float t = 0f; t < 8f && sd.Phase != Phase.Live; t += dt)
+                        sd.Update(dt, sd.HolsterPoint, false, false);
+                    var e = sd.Enemy;
+                    float ang = -0.1f - k * (MathF.PI * 0.9f / tries);
+                    e.Crippled = k % 2 == 0;
+                    e.Collapse(new Vector2(MathF.Cos(ang), MathF.Sin(ang)), 0.7f + k * 0.05f);
+                    for (float t = 0f; t < 6f; t += dt)
+                        e.Update(dt, e.Arm.HolsterPoint, Fighter.ArmWeight, false);
+                    float lo = 1e9f, hi = -1e9f, lox = 1e9f, hix = -1e9f;
+                    for (float t = 0f; t < 2f; t += dt)
+                    {
+                        e.Update(dt, e.Arm.HolsterPoint, Fighter.ArmWeight, false);
+                        Vector2 f = e.Doll.Pos[Ragdoll.FootB];
+                        lo = MathF.Min(lo, f.Y); hi = MathF.Max(hi, f.Y);
+                        lox = MathF.Min(lox, f.X); hix = MathF.Max(hix, f.X);
+                    }
+                    worst = MathF.Max(worst, MathF.Max(hi - lo, hix - lox));
+                    if (!e.Doll.Asleep) awake++;
+                }
+                Console.WriteLine($"[check] downed body settles: worst back-foot wander {worst:0.0}px" +
+                    $" over 2s, still awake in {awake}/{tries}" + (worst < 2f ? " - ok" : "  FAIL"));
+            }
+
             // a man who goes down but does not die must still end the round
             {
                 float t = 0f;

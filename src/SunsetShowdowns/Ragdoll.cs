@@ -87,16 +87,21 @@ namespace LLD
         void Bone(int a, int b, float stiff)
             => _links.Add(new Link { A = a, B = b, Len = Vector2.Distance(Pos[a], Pos[b]), Stiff = stiff });
 
-        /// <summary>Shove one point - used for the bullet's impulse and for the kick of landing.</summary>
-        public void Kick(int idx, Vector2 vel) => Prev[idx] -= vel * Fixed;
+        /// <summary>
+        /// Shove one point - used for the bullet.s impulse and for the kick of landing. Any
+        /// shove wakes the body: a corpse that has settled still has to jump when it is hit.
+        /// </summary>
+        public void Kick(int idx, Vector2 vel) { Prev[idx] -= vel * Fixed; Asleep = false; }
 
         public void KickAll(Vector2 vel)
         {
             for (int i = 0; i < Count; i++) Prev[i] -= vel * Fixed;
+            Asleep = false;
         }
 
         public void Spin(float radPerSec)
         {
+            Asleep = false;
             Vector2 c = Pos[Pelvis];
             for (int i = 0; i < Count; i++)
             {

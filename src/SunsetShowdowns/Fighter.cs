@@ -46,7 +46,6 @@ namespace LLD
 
         public bool HatOn = true;
         public bool Disarmed;
-        public float DisarmTimer;
 
         public ArmRig Arm = new ArmRig();
         public List<Wound> Wounds = new();
@@ -98,6 +97,8 @@ namespace LLD
         const float LegRestAnkle = 166f;    // pelvis to ankle, stood up straight
         const float LegMaxAnkle = 168f;
         const float MaxStance = 150f;   // how far apart the boots may ever get
+        // hips this far off the dirt and his legs have plainly gone; normal is about 200
+        const float SagFloor = 110f;
         const float MaxReach = 92f;    // how far a boot may sit from the hips before it must move
         public const float ArmWeight = 0.5f;   // one standard feel for the gun hand
 
@@ -177,6 +178,7 @@ namespace LLD
             Collapsed = s.Down;
             Killed = s.Dead;
         }
+        float _sagging;             // how long his hips have been down near the dirt
         public float Muscle = 1f;          // 1 standing strong, 0 limp
         public const float SpineLen = 112f;
         public const float RestLeg = 200f; // pelvis to the sole when he is stood up straight
@@ -531,8 +533,9 @@ namespace LLD
         {
             if (!Arm.HasGun) return;
             Arm.HasGun = false;
+            // Once it is out of his hand it stays out. He is not picking it back up: the round
+            // is what he has lost, not a second and a half.
             Disarmed = true;
-            DisarmTimer = Rng.F(1.2f, 1.9f);
             Gore.LaunchGun(Arm.Hand, new Vector2(Face * Rng.F(90f, 220f), -Rng.F(240f, 400f)), Arm.GunAngle, P, Face);
             Sfx.Play("thud", 0.4f, 1.4f);
         }
@@ -627,12 +630,6 @@ namespace LLD
             Balance(dt);
             Simulate(dt);
 
-            if (Disarmed)
-            {
-                DisarmTimer -= dt;
-                if (DisarmTimer <= 0f) { Disarmed = false; Arm.HasGun = true; Sfx.Play("holster", 0.6f, 1.1f); }
-            }
-
             Arm.Shoulder = L2W(new Vector2(10f, -318f));
             Arm.HolsterPoint = L2W(new Vector2(48f, -158f));
             Arm.Holstered = holstered;
@@ -663,6 +660,23 @@ namespace LLD
             const float G = 2000f;
             float h = RestLeg * Scale;
             float omega = MathF.Sqrt(G / h);
+
+            // His legs are not holding him up any more. A man sat on his own hips is not
+            // standing, whatever the rest of this thinks, and the stepping below will go on
+            // throwing a boot out and planting it for as long as you let it - which is what
+            // the twitching leg on a downed man was. Once he is this low he goes down properly.
+            if (Scene.GroundY - PelvisP.Y < SagFloor * Scale)
+            {
+                _sagging += dt;
+                if (_sagging > 0.25f)
+                {
+                    float away = PelvisV.X != 0f ? MathF.Sign(PelvisV.X) : -Face;
+                    Collapse(new Vector2(away, -0.1f),
+                             Math.Clamp(MathF.Abs(PelvisV.X) / 300f, 0.4f, 1.2f));
+                    return;
+                }
+            }
+            else _sagging = 0f;
 
             float footWorld = SupportX;
             float lever = PelvisP.X - footWorld;
