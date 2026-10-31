@@ -1983,6 +1983,36 @@ namespace LLD
                 Raylib.UnloadImage(ri);
             }
 
+            // every cut, bareheaded and then under a brim, because what a style has to do
+            // second is sit under a hat without the crown of it poking through the felt
+            {
+                var e = _duel.Enemy;
+                float keepScale = e.Scale;
+                int keepHair = e.Def.HairStyle, keepHat = e.Def.HatStyle;
+                bool keepOn = e.HatOn;
+                e.Scale = 2.6f;
+                Raylib.BeginTextureMode(_scene);
+                Raylib.ClearBackground(new Color(224, 216, 202, 255));
+                for (int i = 0; i < Loadout.CutNames.Length; i++)
+                {
+                    e.Def.HairStyle = i;
+                    for (int row = 0; row < 2; row++)
+                    {
+                        e.Def.HatStyle = row == 0 ? 3 : 0;
+                        Vector2 hp = new Vector2(210f + i * 290f, 300f + row * 420f);
+                        Art.InkPass = true; e.DrawHeadOnly(hp, row == 1); Art.InkPass = false;
+                        e.DrawHeadOnly(hp, row == 1);
+                    }
+                }
+                Raylib.EndTextureMode();
+                var hi2 = Raylib.LoadImageFromTexture(_scene.Texture);
+                Raylib.ImageFlipVertical(ref hi2);
+                Raylib.ImageCrop(ref hi2, new Rectangle(60f, 120f, 1800f, 780f));
+                Raylib.ExportImage(hi2, Path.Combine(dir, "27-hair.png"));
+                Raylib.UnloadImage(hi2);
+                e.Scale = keepScale; e.Def.HairStyle = keepHair; e.Def.HatStyle = keepHat; e.HatOn = keepOn;
+            }
+
             _screen = Screen.Customise; _menuIndex = 6; _vmouse = new Vector2(1200f, 660f);
             Shot("19-customise");
             _nameDraft = "Jasqueezie"; _screen = Screen.Name; _vmouse = new Vector2(960f, 596f);

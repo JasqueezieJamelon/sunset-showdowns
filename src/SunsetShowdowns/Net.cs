@@ -58,7 +58,7 @@ namespace LLD
         /// 4: handshake carries each side's look and the match length; round ends carry a note
         ///    for the loser too; snapshots carry the whole stance, not just a position.
         /// 5: a round can end in a draw (winner 2), which scores for nobody.
-        public const int Protocol = 5;
+        public const int Protocol = 6;   // 6: the loadout carries a hair style
         public const int DefaultPort = 27555;
         const string Key = "lastlightduels";
 

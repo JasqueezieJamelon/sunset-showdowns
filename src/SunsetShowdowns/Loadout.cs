@@ -10,13 +10,13 @@ namespace LLD
     /// </summary>
     public struct Loadout
     {
-        public byte Skin, Hat, Face, Hair, Shirt, Pants, Boots, Gloves, Scarf;
+        public byte Skin, Hat, Face, Hair, Cut, Shirt, Pants, Boots, Gloves, Scarf;
 
-        public const int Fields = 9;
+        public const int Fields = 10;
 
         public static Loadout Default => new Loadout
         {
-            Skin = 0, Hat = 0, Face = 3, Hair = 0, Shirt = 0, Pants = 0, Boots = 0, Gloves = 0, Scarf = 1,
+            Skin = 0, Hat = 0, Face = 3, Hair = 0, Cut = 0, Shirt = 0, Pants = 0, Boots = 0, Gloves = 0, Scarf = 1,
         };
 
         static Color C(int r, int g, int b) => new Color(r, g, b, 255);
@@ -29,6 +29,7 @@ namespace LLD
         public static readonly string[] GloveNames = { "Bare hands", "Worn leather", "Black" };
 
         public static readonly string[] HairNames = { "Brown", "Black", "Sandy", "Grey", "Red" };
+        public static readonly string[] CutNames = { "Cropped", "Swept", "Slicked", "Long", "Shaggy", "Balding" };
         public static readonly Color[] HairColours =
             { C(64, 46, 34), C(28, 22, 20), C(138, 102, 62), C(206, 202, 194), C(146, 52, 34) };
 
@@ -53,20 +54,21 @@ namespace LLD
             1 => FaceNames.Length,
             2 => SkinNames.Length,
             3 => HairNames.Length,
-            4 => ShirtNames.Length,
-            5 => PantsNames.Length,
-            6 => BootNames.Length,
-            7 => GloveNames.Length,
+            4 => CutNames.Length,
+            5 => ShirtNames.Length,
+            6 => PantsNames.Length,
+            7 => BootNames.Length,
+            8 => GloveNames.Length,
             _ => ScarfNames.Length,
         };
 
         public static readonly string[] FieldNames =
-            { "Hat", "Face", "Skin", "Hair", "Shirt", "Trousers", "Boots", "Gloves", "Neckerchief" };
+            { "Hat", "Face", "Skin", "Hair colour", "Hair style", "Shirt", "Trousers", "Boots", "Gloves", "Neckerchief" };
 
         public byte Get(int field) => field switch
         {
-            0 => Hat, 1 => Face, 2 => Skin, 3 => Hair, 4 => Shirt,
-            5 => Pants, 6 => Boots, 7 => Gloves, _ => Scarf,
+            0 => Hat, 1 => Face, 2 => Skin, 3 => Hair, 4 => Cut, 5 => Shirt,
+            6 => Pants, 7 => Boots, 8 => Gloves, _ => Scarf,
         };
 
         public void Set(int field, byte v)
@@ -77,10 +79,11 @@ namespace LLD
                 case 1: Face = v; break;
                 case 2: Skin = v; break;
                 case 3: Hair = v; break;
-                case 4: Shirt = v; break;
-                case 5: Pants = v; break;
-                case 6: Boots = v; break;
-                case 7: Gloves = v; break;
+                case 4: Cut = v; break;
+                case 5: Shirt = v; break;
+                case 6: Pants = v; break;
+                case 7: Boots = v; break;
+                case 8: Gloves = v; break;
                 default: Scarf = v; break;
             }
         }
@@ -98,10 +101,11 @@ namespace LLD
             1 => FaceNames[Face % FaceNames.Length],
             2 => SkinNames[Skin % SkinNames.Length],
             3 => HairNames[Hair % HairNames.Length],
-            4 => ShirtNames[Shirt % ShirtNames.Length],
-            5 => PantsNames[Pants % PantsNames.Length],
-            6 => BootNames[Boots % BootNames.Length],
-            7 => GloveNames[Gloves % GloveNames.Length],
+            4 => CutNames[Cut % CutNames.Length],
+            5 => ShirtNames[Shirt % ShirtNames.Length],
+            6 => PantsNames[Pants % PantsNames.Length],
+            7 => BootNames[Boots % BootNames.Length],
+            8 => GloveNames[Gloves % GloveNames.Length],
             _ => ScarfNames[Scarf % ScarfNames.Length],
         };
 
@@ -132,6 +136,7 @@ namespace LLD
                 Trade = "drifter",
                 P = p,
                 HatStyle = l.Hat,
+                HairStyle = l.Cut,
                 Face = l.Face,
                 BootStyle = l.Boots,
                 ScarfOn = l.Scarf != 0,
