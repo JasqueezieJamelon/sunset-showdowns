@@ -38,7 +38,7 @@ namespace LLD
     public class App
     {
         /// Bumped by the last digit on every change. Stays on 0.1.x until told otherwise.
-        public const string Version = "0.1.4.2";
+        public const string Version = "0.1.4.3";
 
         Settings S;
         RenderTexture2D _scene;
@@ -2018,9 +2018,12 @@ namespace LLD
                 int s0 = q.Steps;
                 for (float t = 0f; t < 2f; t += dt) q.Update(dt, q.Arm.HolsterPoint, Fighter.ArmWeight, true);
                 float hips = Scene.GroundY - q.PelvisP.Y, lever = q.PelvisP.X - q.SupportX;
-                bool ok = q.Steps == s0 && hips > 170f && MathF.Abs(lever) < 30f && !q.Down;
+                float drift = (q.PelvisP.X - Scene.EnemyStand.X) * q.Face;   // + is forward
+                bool ok = q.Steps == s0 && hips > 170f && MathF.Abs(lever) < 30f && !q.Down
+                          && MathF.Abs(drift) < 40f;
                 Console.WriteLine($"[check] stands still: {q.Steps - s0} steps in 2s, hips {hips:0}," +
-                    $" weight {lever:0}px off his boots, stance {q.Stance:0}" + (ok ? " - ok" : "  FAIL"));
+                    $" weight {lever:0}px off his boots, drifted {drift:0}px, stance {q.Stance:0}" +
+                    (ok ? " - ok" : "  FAIL"));
             }
 
             // A man whose legs have given out has to go down. He used to sink until his hips

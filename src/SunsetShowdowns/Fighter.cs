@@ -113,6 +113,7 @@ namespace LLD
             // Stand the body up before anything asks it where his shoulder is. From here on
             // it is the only body he has, upright or otherwise.
             Doll.Stand(origin, face, Scale);
+            Settle();
 
             Arm.Face = face;
             Arm.UpperLen = 82f * Scale;
@@ -802,7 +803,42 @@ namespace LLD
                     Doll.Pos[f].X += shift;
                     Doll.Prev[f].X += shift;
                 }
+
+                // and he walks himself back to his mark, trunk first with the legs following
+                // it. Without this, every stagger he rides out leaves him a few feet further
+                // down the street than he started, and he never gets them back.
+                float home = Origin.X - PelvisP.X;
+                if (MathF.Abs(home) > 0.5f)
+                {
+                    Vector2 d = new Vector2(MathF.Min(38f * dt, MathF.Abs(home)) * MathF.Sign(home), 0f);
+                    Doll.Place(Ragdoll.Pelvis, PelvisP + d);
+                    Doll.Place(Ragdoll.Chest, ChestP + d);
+                }
             }
+        }
+
+        /// <summary>
+        /// Lets him find his feet before anybody looks at him. A pose drawn by hand is never
+        /// quite what the muscles would hold, and the difference is enough that his first act
+        /// on being built was to stagger backwards out of it - five steps before the round had
+        /// even been called. So he does his settling here, with the stepping switched off, and
+        /// is then put back on his mark with the speed taken out of him.
+        /// </summary>
+        void Settle()
+        {
+            Doll.Muscle = 1f;
+            Doll.Lean = 0f;
+            Doll.StandHeight = RestLeg * Scale;
+            Doll.GroundY = Scene.GroundY;
+            Doll.Face = Face;
+            Doll.StepLeg = -1;
+            for (int i = 0; i < 200; i++) Doll.Step(Ragdoll.Fixed, Scene.GroundY);
+
+            // Put him on his mark without touching the shape he settled into - dragging a foot
+            // to where the drawing says it belongs puts the legs back out of agreement with
+            // the muscles, which is the very thing this is here to avoid.
+            Doll.Shift(new Vector2(Origin.X - SupportX, 0f));
+            for (int i = 0; i < Ragdoll.Count; i++) Doll.Prev[i] = Doll.Pos[i];
         }
 
         /// <summary>

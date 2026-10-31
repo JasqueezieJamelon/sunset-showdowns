@@ -293,16 +293,16 @@ namespace LLD
             Pull(Head, Pos[Neck] + up * HeadLen, 0.22f * m, 0.35f * m);
 
             // Knees. Left alone a planted leg folds under the weight before the hips get the
-            // message, so the knee is held just forward of the line from hip to ankle.
+            // message, so the knee is held on the line from hip to ankle - on it, not a step
+            // forward of it. Holding it off that line is a push the bones have to answer, and
+            // the lightest thing on the end of them is his boot, so he slides backwards across
+            // the street for ever, a little every tick, with nobody laying a finger on him.
+            // Which way a knee bends is the hinge's business, not a muscle's.
             for (int leg = 0; leg < 2; leg++)
             {
                 if (!Planted(leg)) continue;
                 int k = Knee(leg), f = Foot(leg);
-                Vector2 chord = Pos[f] - Pos[Pelvis];
-                float len = chord.Length();
-                if (len < 0.001f) continue;
-                Vector2 n = new Vector2(-chord.Y, chord.X) / len * -Face;
-                Pull(k, (Pos[Pelvis] + Pos[f]) * 0.5f + n * 8f, 0.30f * m, 0.40f * m);
+                Pull(k, (Pos[Pelvis] + Pos[f]) * 0.5f, 0.26f * m, 0.40f * m);
             }
         }
 
@@ -312,11 +312,13 @@ namespace LLD
         /// </summary>
         void Joints()
         {
-            Hinge(Pelvis, KneeB, FootB, -1f, 5f);
-            Hinge(Pelvis, KneeF, FootF, -1f, 5f);
+            Hinge(Pelvis, KneeB, FootB, -1f, 2f);
+            Hinge(Pelvis, KneeF, FootF, -1f, 2f);
             Hinge(Chest, ElbowB, HandB, 1f, 7f);
             Hinge(Chest, ElbowG, HandG, 1f, 7f);
         }
+
+
 
         /// <param name="side">-1 keeps the middle joint forward of the chord, +1 keeps it behind.</param>
         void Hinge(int a, int b, int c, float side, float minBend)
@@ -334,10 +336,22 @@ namespace LLD
             bool bad = (side * Face > 0f) ? d < want : d > want;
             if (!bad) return;
 
+            // The joint takes most of it, and the two ends take the kick back - except where an
+            // end is standing on the street. A knee resting against its stop all day otherwise
+            // shoves his hip and his boot the same way every tick and walks him down the road
+            // with nobody touching him; the ground is what should be swallowing that, and it
+            // is. A limp body still gets the reaction, which is what lets it come to rest.
+            // The joint takes most of it. Whether the two ends take the kick back depends on
+            // whether he is holding himself up: a braced limb puts that into the ground, and a
+            // knee resting against its stop all day would otherwise shove his hip and his boot
+            // the same way every tick and walk him down the street with nobody touching him.
+            // A limp body has nothing to brace with, and it is the kick back through the ends
+            // that lets it stop moving at all.
             Vector2 fix = n * (want - d);
             Pos[b] += fix * 0.8f;
-            Pos[a] -= fix * 0.1f;
-            Pos[c] -= fix * 0.1f;
+            float react = Muscle > 0.05f ? 0f : 0.1f;
+            Pos[a] -= fix * react;
+            Pos[c] -= fix * react;
         }
 
         void Collide(float ground)
