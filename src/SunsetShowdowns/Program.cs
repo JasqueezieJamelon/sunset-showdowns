@@ -2087,6 +2087,42 @@ namespace LLD
                     $" {bouncing} still hopping" + (bouncing == 0 ? " - ok" : "  FAIL"));
             }
 
+            // A boot on the street does not skate on it, and a leg under load does not pogo.
+            // Drop his weight hard onto the back leg so it folds and he tilts: the failure to
+            // catch is the front boot sliding away backwards under him while the back one
+            // bounces, which is a foot with no grip and a leg spring with too much to give.
+            {
+                float worstSlide = 0f, worstSwing = 0f;
+                for (int k = 0; k < 6; k++)
+                {
+                    var p = new Fighter(Roster.All[3], Scene.PlayerStand, 1);
+                    for (float t = 0f; t < 2f; t += dt) p.Update(dt, p.Arm.HolsterPoint, Fighter.ArmWeight, true);
+
+                    // fold the back leg and tip him over it
+                    p.Doll.Kick(Ragdoll.Pelvis, new Vector2(-70f - k * 30f, 420f + k * 90f));
+                    p.Doll.Kick(Ragdoll.Chest, new Vector2(-50f - k * 25f, 0f));
+
+                    float f0 = p.Doll.Pos[Ragdoll.FootB].X, f1 = p.Doll.Pos[Ragdoll.FootF].X;
+                    float slide0 = 0f, slide1 = 0f, lo = 9e9f, hi = -9e9f;
+                    for (float t = 0f; t < 2.5f; t += dt)
+                    {
+                        p.Update(dt, p.Arm.HolsterPoint, Fighter.ArmWeight, true);
+                        if (p.Down) break;
+                        // only count drift while that boot is meant to be standing on the dirt
+                        if (p.Doll.StepLeg != 0) slide0 += MathF.Abs(p.Doll.Pos[Ragdoll.FootB].X - f0);
+                        if (p.Doll.StepLeg != 1) slide1 += MathF.Abs(p.Doll.Pos[Ragdoll.FootF].X - f1);
+                        f0 = p.Doll.Pos[Ragdoll.FootB].X; f1 = p.Doll.Pos[Ragdoll.FootF].X;
+                        float hips = Scene.GroundY - p.PelvisP.Y;
+                        if (t > 0.25f) { lo = MathF.Min(lo, hips); hi = MathF.Max(hi, hips); }
+                    }
+                    worstSlide = MathF.Max(worstSlide, MathF.Max(slide0, slide1));
+                    if (hi > lo) worstSwing = MathF.Max(worstSwing, hi - lo);
+                }
+                bool ok = worstSlide < 90f && worstSwing < 60f;
+                Console.WriteLine($"[check] tipped onto one leg: worst boot skated {worstSlide:0}px," +
+                    $" hips swung {worstSwing:0}px" + (ok ? " - ok" : "  FAIL"));
+            }
+
             // Both legs have to be in it. Standing, the weight is shared between two boots
             // rather than parked on one; riding out a shove, the leg still on the street has
             // to be doing real work the whole time instead of the body sagging onto it and

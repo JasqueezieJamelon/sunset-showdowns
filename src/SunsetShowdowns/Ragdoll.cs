@@ -71,9 +71,11 @@ namespace LLD
         const float LegSpring = 520f;   // the trim on top: push per pixel short of standing
         const float LegDamp = 44f;      // the knee soaking up the drop
         const float LegMax = 13000f;    // all one leg has
-        const float AnkleSpring = 26f;
-        const float AnkleDamp = 15f;
-        const float AnkleMax = 1700f;
+        const float AnkleSpring = 50f;
+        const float AnkleDamp = 28f;
+        const float AnkleMax = 2600f;
+        const float Mu = 0.95f;
+        const float SwingInv = 4f;      // how light a leg is once it is off the street         // how hard a boot can shove sideways before it slides
 
         public float SpineLen { get; private set; }
         public float NeckLen { get; private set; }
@@ -279,6 +281,15 @@ namespace LLD
             // of him has gone, because throwing a leg out is the last thing a falling man does.
             // The arc is the only shaped movement in the body, and even that is only a target:
             // the leg has to reach it through its own bones, and often does not.
+            // A leg in the air weighs almost nothing next to the man standing on the other one.
+            // The bone solver was treating a swinging boot as exactly as heavy as him, so when
+            // it was thrown at a spot on the street it hauled his whole body along behind it
+            // and flung him into the next step - he marched sideways across the road with his
+            // boots four feet apart and never once settled. Make the swinging leg light and
+            // the step moves the leg instead of the man.
+            Inv[FootB] = Inv[KneeB] = StepLeg == 0 ? SwingInv : 1f;
+            Inv[FootF] = Inv[KneeF] = StepLeg == 1 ? SwingInv : 1f;
+
             if (StepLeg >= 0)
             {
                 StepT = MathF.Min(1f, StepT + Fixed / MathF.Max(0.02f, StepDur));
@@ -292,7 +303,7 @@ namespace LLD
                 // arrive early, so a stumble always looked like the same hop. Carrying the
                 // boot's own motion through the pull leaves it something to be shoved off.
                 Vector2 keep = (Pos[sf] - Prev[sf]) * 0.55f;
-                Pos[sf] += (p - Pos[sf]) * 0.38f;
+                Pos[sf] += (p - Pos[sf]) * 0.30f;
                 Prev[sf] = Pos[sf] - keep;
 
                 // A reaching leg finds the street the moment the street is there. Waiting out
@@ -370,41 +381,48 @@ namespace LLD
             {
                 if (!Planted(leg)) continue;
                 int f = Foot(leg);
-                Vector2 d = Pos[Pelvis] - Pos[f];
-                float len = d.Length();
-                if (len < 4f) continue;
-                Vector2 axis = d / len;
+                float dx = Pos[Pelvis].X - Pos[f].X;
 
-                // How far short of carrying him at standing height this leg is. StandHeight is
-                // measured off the dirt but the ankle rides a boot's worth above it, so the
-                // bone itself is shorter than that by exactly the boot.
-                float squash = LegRest - len;
+                // What a leg does is hold him UP and lean him about; it is not a rocket
+                // pointed along the thigh. Pushing straight up the bone meant a splayed leg
+                // shovelled him sideways as hard as it held him, and with the other boot in
+                // the air there was nothing to cancel it - so every save flung him the other
+                // way, which bought another step, which flung him back. He marched across the
+                // street with his boots a hundred and fifteen pixels apart and never settled.
+                // The vertical and the sideways are worked out separately now, and the
+                // sideways is kept inside what the boot can actually grip.
 
-                // Carrying his share is the standing itself - a man does not wait to sag
-                // before he pushes. The spring on top of it is only the trim, which is why it
-                // is soft now: stiff enough to hold the height, not so stiff that a pixel of
-                // difference between his legs decides which one he is standing on.
+                // how high this leg can carry him at all, given how far out the boot is
+                float reach = MathF.Sqrt(MathF.Max(16f, LegRest * LegRest - dx * dx));
+                float carryHgt = Pos[f].Y - Pos[Pelvis].Y;      // how high it is carrying him
+                float squash = reach - carryHgt;                // + means he has sunk on it
                 if (leg == 0) DbgSquashB = squash; else DbgSquashF = squash;
+
                 float share = leg == 0 ? shareB : shareF;
-                float along = Carry * share + squash * LegSpring;
+                // his share of standing, the trim on top, and the knee soaking up the drop
+                float lift = Carry * share + squash * LegSpring
+                           + (Vel(Pelvis).Y - Vel(f).Y) * LegDamp;
                 // a leg is a strut, not a rope: it holds him up, it cannot haul him down
-                if (along < 0f) along *= 0.22f;
-                // the knee soaking up the drop
-                along -= Vector2.Dot(Vel(Pelvis) - Vel(f), axis) * LegDamp;
-                along = Math.Clamp(along, -LegMax * 0.35f, LegMax * power);
+                if (lift < 0f) lift *= 0.22f;
+                lift = Math.Clamp(lift, -LegMax * 0.35f, LegMax * power);
 
-                Vector2 side = new Vector2(-axis.Y, axis.X);
-                float lean = Pos[Pelvis].X - Pos[f].X;
-                float ankle = -lean * AnkleSpring - Vector2.Dot(Vel(Pelvis), side) * AnkleDamp;
-                float ankleCap = AnkleMax * power;
-                ankle = Math.Clamp(ankle, -ankleCap, ankleCap);
+                // The ankle, hauling him back over this boot - and never harder than the boot
+                // is pressed into the street, because past that the foot just slides. That
+                // limit is the whole reason a hard enough shove takes a man off his feet
+                // instead of him simply leaning it off.
+                float side = -dx * AnkleSpring - Vel(Pelvis).X * AnkleDamp;
+                // what the boot is actually pressed into the street with: his share of him, plus
+                // whatever the leg is adding. Sizing the grip off the muscle alone left a
+                // standing man with almost no sideways authority at all.
+                float normal = Carry * share + MathF.Max(0f, lift);
+                float grip = MathF.Min(AnkleMax * power, normal * Mu);
+                side = Math.Clamp(side, -grip, grip);
 
-                Push(Pelvis, (axis * along + side * ankle) * m);
-                // the reaction is what presses the boot into the street instead of letting the
-                // push slide him along it
-                Push(f, axis * (-along * 0.10f) * m);
+                Push(Pelvis, new Vector2(side, -lift) * m);
+                // the reaction presses the boot into the street rather than sliding him along it
+                Push(f, new Vector2(-side, lift) * (0.10f * m));
 
-                float load = MathF.Abs(along) / MathF.Max(1f, LegMax);
+                float load = MathF.Abs(lift) / MathF.Max(1f, LegMax);
                 if (leg == 0) LoadB = load; else LoadF = load;
             }
 
@@ -502,10 +520,21 @@ namespace LLD
                 float floor = ground - Clear[f];
                 float lift = floor - Pos[f].Y;          // above the dirt by this much
                 if (lift <= 0f || lift > Clear[f] * 0.5f) continue;
-                Pos[f].Y = floor;
-                // and it does not keep the upward shove the solver just handed it
-                if (Prev[f].Y < Pos[f].Y) Prev[f].Y = Pos[f].Y;
+                Ground(f, floor);
             }
+        }
+
+        /// <summary>
+        /// A point resting on the street: it stops sinking, and the dirt scrubs off the
+        /// sideways motion it had. Holding a boot down and NOT giving it this is a boot on
+        /// ice, which is how the standing foot came to slide away backwards underneath him.
+        /// </summary>
+        void Ground(int i, float floor)
+        {
+            Pos[i].Y = floor;
+            float vx = Pos[i].X - Prev[i].X;
+            Prev[i].X = Pos[i].X - vx * 0.3f;
+            Prev[i].Y = Pos[i].Y;
         }
 
         void Collide(float ground)
@@ -514,11 +543,7 @@ namespace LLD
             {
                 float floor = ground - Clear[i];
                 if (Pos[i].Y <= floor) continue;
-                Pos[i].Y = floor;
-                // friction: scrub off the horizontal motion the point had
-                float vx = Pos[i].X - Prev[i].X;
-                Prev[i].X = Pos[i].X - vx * 0.3f;
-                Prev[i].Y = Pos[i].Y;
+                Ground(i, floor);
             }
         }
 
