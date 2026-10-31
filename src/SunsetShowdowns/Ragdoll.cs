@@ -20,6 +20,9 @@ namespace LLD
         public Vector2[] Prev = new Vector2[Count];
         public float[] Rad = new float[Count];
         public float[] Inv = new float[Count];
+        /// <summary>How far above the dirt each point comes to rest. An ankle is not a ball:
+        /// it sits a boot's height up, and that height is what his legs have to push from.</summary>
+        public float[] Clear = new float[Count];
         public bool Active;
         public bool Asleep;
         public int Face = 1;
@@ -28,37 +31,89 @@ namespace LLD
         readonly List<Link> _links = new();
 
         float _accum;
-        const float Fixed = 1f / 120f;
+        public const float Fixed = 1f / 120f;
 
-        public void Build(Fighter f)
+        // ---------- muscles ----------
+        // What turns a sack of bones into a man standing up. These are the only difference
+        // between him on his feet and him in the dirt: the bones, the joints and the ground do
+        // not change, the strength behind them does. Drop Muscle to nothing and he falls the
+        // same way a dead man does, because he is one.
+        public float Muscle;            // 0 limp, 1 holding himself up
+        public float Lean;              // radians the trunk is trying for, his facing applied
+        public float StandHeight;       // how far above the dirt he is trying to carry his hips
+        public float GroundY;
+        public int StepLeg = -1;        // the boot that is off the ground, -1 for neither
+        public Vector2 StepFrom, StepTarget;
+        public float StepT, StepDur = 0.24f, StepLift = 34f;
+        public bool StepLanded;         // true for the frame a boot comes down
+
+        public float SpineLen { get; private set; }
+        public float NeckLen { get; private set; }
+        public float HeadLen { get; private set; }
+
+        public static int Foot(int leg) => leg == 0 ? FootB : FootF;
+        public static int Knee(int leg) => leg == 0 ? KneeB : KneeF;
+
+        /// <summary>Velocity of one point, in units a second.</summary>
+        public Vector2 Vel(int i) => (Pos[i] - Prev[i]) / Fixed;
+
+        public void SetVel(int i, Vector2 v) => Prev[i] = Pos[i] - v * Fixed;
+
+        /// <summary>Move a point without changing what it was doing.</summary>
+        public void Place(int i, Vector2 p)
         {
-            Vector2 P(float x, float y) => f.L2W(new Vector2(x, y));
+            Vector2 v = Pos[i] - Prev[i];
+            Pos[i] = p;
+            Prev[i] = p - v;
+            Asleep = false;
+        }
+
+        public void Shift(Vector2 d)
+        {
+            for (int i = 0; i < Count; i++) { Pos[i] += d; Prev[i] += d; }
+        }
+
+        /// <summary>True when that boot is taking weight.</summary>
+        public bool Planted(int leg)
+        {
+            int f = Foot(leg);
+            return StepLeg != leg && Pos[f].Y >= GroundY - Clear[f] - 3f;
+        }
+
+        /// <summary>
+        /// Stands the body up from nothing, in his own coordinates, because at the moment this
+        /// runs there is no body yet to ask where anything is. This is the only pose in the
+        /// game: everything after it is the physics and the muscles arguing.
+        /// </summary>
+        public void Stand(Vector2 origin, int face, float scale)
+        {
+            Vector2 P(float x, float y) => origin + new Vector2(x * face * scale, y * scale);
 
             Pos[Head] = P(6f, -404f);
             Pos[Neck] = P(2f, -352f);
             Pos[Chest] = P(0f, -312f);
             Pos[Pelvis] = P(0f, -202f);
 
-            // take the legs exactly where they already are, so nothing jumps as he goes down
-            f.LegJoints(0, out _, out Vector2 kneeB, out Vector2 ankleB);
-            f.LegJoints(1, out _, out Vector2 kneeF, out Vector2 ankleF);
-            Pos[KneeB] = kneeB;
-            Pos[FootB] = ankleB;
-            Pos[KneeF] = kneeF;
-            Pos[FootF] = ankleF;
-            Pos[ElbowB] = P(-30f, -262f);
-            Pos[HandB] = P(-26f, -196f);
-            Pos[ElbowG] = f.Arm.Elbow;
-            Pos[HandG] = f.Arm.Hand;
+            Pos[FootB] = P(-13f, -38f);
+            Pos[FootF] = P(21f, -38f);
+            Pos[KneeB] = P(16f, -120f);     // knees a shade forward, as a standing leg is
+            Pos[KneeF] = P(26f, -120f);
 
-            float s = f.Scale;
+            Pos[ElbowB] = P(-30f, -252f);
+            Pos[HandB] = P(-33f, -186f);
+            Pos[ElbowG] = P(26f, -250f);
+            Pos[HandG] = P(48f, -158f);
+
+            float s = scale;
             float[] radii = { 32f, 14f, 30f, 28f, 17f, 18f, 17f, 18f, 13f, 12f, 13f, 12f };
             for (int i = 0; i < Count; i++)
             {
                 Prev[i] = Pos[i];
                 Rad[i] = radii[i] * s;
                 Inv[i] = 1f;
+                Clear[i] = Rad[i] * 0.45f;
             }
+            Clear[FootB] = Clear[FootF] = 38f * s;        // the ankle rides a boot off the dirt
             Inv[Chest] = 0.7f;      // the trunk carries the weight
             Inv[Pelvis] = 0.7f;
 
@@ -78,9 +133,14 @@ namespace LLD
             Bone(Chest, KneeF, 0.07f);
             Bone(KneeB, KneeF, 0.05f);
 
-            Face = f.Face;
+            SpineLen = Vector2.Distance(Pos[Chest], Pos[Pelvis]);
+            NeckLen = Vector2.Distance(Pos[Neck], Pos[Chest]);
+            HeadLen = Vector2.Distance(Pos[Head], Pos[Neck]);
+
+            Face = face;
             Active = true;
             Asleep = false;
+            StepLeg = -1;
             _accum = 0f;
         }
 
@@ -142,6 +202,8 @@ namespace LLD
                 Pos[i] += v + new Vector2(0f, Gravity) * (Fixed * Fixed);
             }
 
+            Muscles();
+
             for (int iter = 0; iter < 6; iter++)
             {
                 foreach (var l in _links)
@@ -163,7 +225,85 @@ namespace LLD
 
             float moved = 0f;
             for (int i = 0; i < Count; i++) moved += (Pos[i] - Prev[i]).Length();
-            if (moved < 0.5f) Asleep = true;
+            if (moved < 0.5f && Muscle <= 0.01f) Asleep = true;
+        }
+
+        /// <summary>
+        /// The muscles, applied before the bones are resolved so the bones have the last word -
+        /// he can pull as hard as he likes, his thigh is still the length it is.
+        ///
+        /// Everything here is a pull towards where that part of him is trying to be, at a
+        /// strength set by how much is left of him. Nothing is scripted and nothing is a pose:
+        /// take the strength away and the same body falls over, which is the whole point.
+        /// </summary>
+        void Muscles()
+        {
+            // A boot on its way somewhere. It is the one thing that still works when the rest
+            // of him has gone, because throwing a leg out is the last thing a falling man does.
+            // The arc is the only shaped movement in the body, and even that is only a target:
+            // the leg has to reach it through its own bones, and often does not.
+            if (StepLeg >= 0)
+            {
+                StepT = MathF.Min(1f, StepT + Fixed / MathF.Max(0.02f, StepDur));
+                Vector2 p = Vector2.Lerp(StepFrom, StepTarget, StepT);
+                p.Y -= MathF.Sin(StepT * MathF.PI) * StepLift;
+                int sf = Foot(StepLeg);
+                Pos[sf] += (p - Pos[sf]) * 0.45f;
+                if (StepT >= 1f) { StepLeg = -1; StepLanded = true; }
+            }
+
+            float m = Muscle;
+            if (m <= 0.002f) return;
+
+            // A muscle moves a part of him without hurling it. Shifting Pos alone in a Verlet
+            // body is a velocity, and at a hundred and twenty ticks a second a muscle fighting
+            // gravity for ever would pump energy in until he came apart; carrying Prev most of
+            // the way along with it leaves the pull without the kick.
+            void Pull(int i, Vector2 want, float k, float brake)
+            {
+                Vector2 v = (Pos[i] - Prev[i]) * (1f - brake);
+                Pos[i] += (want - Pos[i]) * k;
+                Prev[i] = Pos[i] - v;
+            }
+
+            // Legs. Each planted boot pushes the hips back up to standing height above itself.
+            // Straight up is strong - that is bone and the big muscles of the thigh. Sideways
+            // is weak, because all he has to drag his weight back over his feet with is his
+            // ankles, and that is exactly why a hard enough shove takes him off them.
+            int down = 0;
+            float sumX = 0f;
+            for (int leg = 0; leg < 2; leg++)
+                if (Planted(leg)) { down++; sumX += Pos[Foot(leg)].X; }
+
+            if (down > 0)
+            {
+                Vector2 want = new Vector2(sumX / down, GroundY - StandHeight);
+                Vector2 e = want - Pos[Pelvis];
+                // Straight up is strong - that is bone and the whole of his thigh. Sideways is
+                // weak, because all he has to haul his weight back over his boots with is his
+                // ankles, and that is exactly why a hard enough shove takes him off them.
+                Pull(Pelvis, Pos[Pelvis] + new Vector2(e.X * 0.10f, e.Y), 0.34f * m, 0.45f * m);
+            }
+
+            // Trunk: hold the chest over the hips at the angle he is trying for, and his head
+            // over that. The head is the weakest of the three, so it is the first thing to loll.
+            Vector2 up = Art.Rot(new Vector2(0f, -1f), Lean);
+            Pull(Chest, Pos[Pelvis] + up * SpineLen, 0.34f * m, 0.45f * m);
+            Pull(Neck, Pos[Chest] + up * NeckLen, 0.30f * m, 0.40f * m);
+            Pull(Head, Pos[Neck] + up * HeadLen, 0.22f * m, 0.35f * m);
+
+            // Knees. Left alone a planted leg folds under the weight before the hips get the
+            // message, so the knee is held just forward of the line from hip to ankle.
+            for (int leg = 0; leg < 2; leg++)
+            {
+                if (!Planted(leg)) continue;
+                int k = Knee(leg), f = Foot(leg);
+                Vector2 chord = Pos[f] - Pos[Pelvis];
+                float len = chord.Length();
+                if (len < 0.001f) continue;
+                Vector2 n = new Vector2(-chord.Y, chord.X) / len * -Face;
+                Pull(k, (Pos[Pelvis] + Pos[f]) * 0.5f + n * 8f, 0.30f * m, 0.40f * m);
+            }
         }
 
         /// <summary>
@@ -204,7 +344,7 @@ namespace LLD
         {
             for (int i = 0; i < Count; i++)
             {
-                float floor = ground - Rad[i] * 0.45f;
+                float floor = ground - Clear[i];
                 if (Pos[i].Y <= floor) continue;
                 Pos[i].Y = floor;
                 // friction: scrub off the horizontal motion the point had

@@ -76,21 +76,22 @@ namespace LLD
 
         // Each boot is a body of its own: it rests on the dirt under friction, gets thrown when
         // he has to step, and falls where it falls. Nothing about a stride is scripted.
-        readonly Vector2[] _footP = new Vector2[2];   // ankle, world
-        readonly Vector2[] _footV = new Vector2[2];
-        readonly bool[] _airborne = new bool[2];
+        // The boots are the ragdoll's own feet now, not a second pair of points kept alongside
+        // it, so there is nothing left for the two to disagree about.
+        Vector2 FootP(int i) => Doll.Pos[Ragdoll.Foot(i)];
+        bool Airborne(int i) => Doll.StepLeg == i;
         float _stepDelay;
         int _failedSteps;
         public float Crouch;         // kept for leg wounds only
 
         public float AnkleHeight => 38f * Scale;
         public float FootFloor => Scene.GroundY - AnkleHeight;
-        public Vector2 FootWorld(int i) => _footP[i];
+        public Vector2 FootWorld(int i) => FootP(i);
 
-        public float SupportX => (_footP[0].X + _footP[1].X) * 0.5f;
+        public float SupportX => (FootP(0).X + FootP(1).X) * 0.5f;
         public float FootX => SupportX - Origin.X;
-        public bool Stepping => _airborne[0] || _airborne[1];
-        public float Stance => MathF.Abs(_footP[0].X - _footP[1].X);
+        public bool Stepping => Doll.StepLeg >= 0;
+        public float Stance => MathF.Abs(FootP(0).X - FootP(1).X);
 
         const float FootGravity = 2600f;
         const float StepAir = 0.22f;        // roughly how long a boot is off the ground
@@ -109,11 +110,9 @@ namespace LLD
             Face = face;
             Scale = def.Height;
 
-            // stand him up before anything asks where his shoulder is
-            PelvisP = origin + new Vector2(0f, Com.Y * Scale);
-            ChestP = PelvisP + new Vector2(0f, -SpineLen * Scale);
-            _footP[0] = new Vector2(origin.X - 13f * face * Scale, Scene.GroundY - 38f * Scale);
-            _footP[1] = new Vector2(origin.X + 21f * face * Scale, Scene.GroundY - 38f * Scale);
+            // Stand the body up before anything asks it where his shoulder is. From here on
+            // it is the only body he has, upright or otherwise.
+            Doll.Stand(origin, face, Scale);
 
             Arm.Face = face;
             Arm.UpperLen = 82f * Scale;
@@ -129,8 +128,29 @@ namespace LLD
         // The trunk is two physical points, pelvis and chest, carried by the legs. Everything
         // drawn on him is placed relative to those, so the art cannot come apart from the
         // physics: there is only one body, and it is the simulated one.
-        public Vector2 PelvisP, PelvisV;
-        public Vector2 ChestP, ChestV;
+        // The trunk is the ragdoll's pelvis and chest. They read and write as they always did,
+        // so everything drawn on him and every hit box still comes off these two points - but
+        // underneath there is only the one body now, upright or in the dirt.
+        public Vector2 PelvisP
+        {
+            get => Doll.Pos[Ragdoll.Pelvis];
+            set => Doll.Place(Ragdoll.Pelvis, value);
+        }
+        public Vector2 PelvisV
+        {
+            get => Doll.Vel(Ragdoll.Pelvis);
+            set => Doll.SetVel(Ragdoll.Pelvis, value);
+        }
+        public Vector2 ChestP
+        {
+            get => Doll.Pos[Ragdoll.Chest];
+            set => Doll.Place(Ragdoll.Chest, value);
+        }
+        public Vector2 ChestV
+        {
+            get => Doll.Vel(Ragdoll.Chest);
+            set => Doll.SetVel(Ragdoll.Chest, value);
+        }
 
         /// <summary>
         /// Everything about a body that two machines can disagree about. The stance is physical,
@@ -147,9 +167,9 @@ namespace LLD
         public Snap Capture() => new Snap
         {
             Pelvis = PelvisP, PelvisV = PelvisV, Chest = ChestP, ChestV = ChestV,
-            Foot0 = _footP[0], Foot1 = _footP[1],
+            Foot0 = FootP(0), Foot1 = FootP(1),
             Blood = Blood, Shock = Shock, Kneel = Kneel,
-            Down = Collapsed, Dead = Killed, Air0 = _airborne[0], Air1 = _airborne[1],
+            Down = Collapsed, Dead = Killed, Air0 = Airborne(0), Air1 = Airborne(1),
         };
 
         /// <summary>
@@ -166,13 +186,12 @@ namespace LLD
 
             PelvisP = Ease(PelvisP, s.Pelvis);
             ChestP = Ease(ChestP, s.Chest);
-            _footP[0] = Ease(_footP[0], s.Foot0);
-            _footP[1] = Ease(_footP[1], s.Foot1);
+            Doll.Place(Ragdoll.FootB, Ease(FootP(0), s.Foot0));
+            Doll.Place(Ragdoll.FootF, Ease(FootP(1), s.Foot1));
             PelvisV = Vector2.Lerp(PelvisV, s.PelvisV, blend);
             ChestV = Vector2.Lerp(ChestV, s.ChestV, blend);
             Kneel = Art.Lerp(Kneel, s.Kneel, blend);
-            _airborne[0] = s.Air0;
-            _airborne[1] = s.Air1;
+            Doll.StepLeg = s.Air0 ? 0 : s.Air1 ? 1 : -1;
             Blood = s.Blood;
             Shock = s.Shock;
             Collapsed = s.Down;
@@ -300,7 +319,7 @@ namespace LLD
         {
             const float Thigh = 92f, Shin = 90f;
             hip = Pose(i == 0 ? -7f : 15f, -212f);
-            ankle = _footP[i];
+            ankle = FootP(i);
 
             // the leg is a fixed length: it cannot reach past itself to a boot
             Vector2 d = ankle - hip;
@@ -546,7 +565,11 @@ namespace LLD
             if (Collapsed) return;
             Collapsed = true;
             DeadTime = 0f;
-            Doll.Build(this);
+            // Nothing is rebuilt and nothing is swapped in. The same body carries on from
+            // exactly where it was; all that happens is that the strength goes out of it.
+            Muscle = 0f;
+            Doll.Muscle = 0f;
+            Doll.StepLeg = -1;
             Doll.KickAll(new Vector2(PelvisV.X * 0.6f + dir.X * 34f * force, -30f));
             Doll.Kick(Ragdoll.Chest, new Vector2(ChestV.X * 0.5f, ChestV.Y * 0.4f));
             Doll.Kick(Ragdoll.Chest, dir * 120f * force);
@@ -628,7 +651,7 @@ namespace LLD
             Kneel = Math.Clamp(Kneel + (Shock > 40f ? dt * 0.8f : -dt * 0.25f), 0f, 1f);
 
             Balance(dt);
-            Simulate(dt);
+            Doll.Step(dt, Scene.GroundY);
 
             Arm.Shoulder = L2W(new Vector2(10f, -318f));
             Arm.HolsterPoint = L2W(new Vector2(48f, -158f));
@@ -645,15 +668,12 @@ namespace LLD
             }
             Arm.Update(dt, holstered ? Arm.HolsterPoint : target, armWeight + Impairment * 0.25f);
         }
-
         /// <summary>
-        /// Keeps him upright the way a person does: legs push the trunk back over the boots, and
-        /// when the trunk gets too far ahead of them the boots have to move. Enough momentum and
-        /// no number of steps saves him.
-        /// </summary>
-        /// <summary>
-        /// Decides where the boots go. It reads the real pelvis rather than an abstract point, so
-        /// the stepping answers to the physics instead of running alongside it.
+        /// What keeps him on his feet. There is no separate standing simulation any more - the
+        /// body is the ragdoll whether he is upright or in the dirt - so all this does is tell
+        /// his muscles what to try for: how hard to pull, what angle he is holding himself at,
+        /// and where to throw a boot when his weight gets away from him. Take the strength out
+        /// and the very same body falls over, because falling over is not a different mode.
         /// </summary>
         void Balance(float dt)
         {
@@ -661,10 +681,44 @@ namespace LLD
             float h = RestLeg * Scale;
             float omega = MathF.Sqrt(G / h);
 
-            // His legs are not holding him up any more. A man sat on his own hips is not
-            // standing, whatever the rest of this thinks, and the stepping below will go on
-            // throwing a boot out and planting it for as long as you let it - which is what
-            // the twitching leg on a downed man was. Once he is this low he goes down properly.
+            // shock takes the strength out of him, and a man with a leg gone has nothing left
+            // to stand on at all
+            float wantM = 1f - Math.Clamp(Shock / 110f, 0f, 0.85f);
+            if (Crippled) wantM = 0f;
+            Muscle += (wantM - Muscle) * (1f - MathF.Exp(-6f * dt));
+
+            // No formula for how low he stands. A wounded knee gives, and a wide stance puts
+            // the legs at an angle so the hips come down on their own.
+            Crouch += (Kneel * 40f - Crouch) * (1f - MathF.Exp(-7f * dt));
+
+            float footWorld = SupportX;
+            float lever = PelvisP.X - footWorld;
+            ComX = PelvisP.X - Origin.X;        // the feet are kept in his own coordinates
+            ComVx = PelvisV.X;
+
+            // the lean he is trying to hold: leaning into it is how a man rides a shove out
+            LeanAng = Math.Clamp(MathF.Atan2(lever, h) * 0.95f, -0.55f, 0.55f);
+
+            // the orders his muscles get this frame, and the whole of them
+            Doll.Muscle = Down ? 0f : Muscle;
+            Doll.Lean = LeanAng;
+            Doll.StandHeight = RestLeg * Scale - Crouch * Scale;
+            Doll.GroundY = Scene.GroundY;
+            Doll.Face = Face;
+            Doll.StepLift = 34f * Scale;
+
+            if (Doll.StepLanded)
+            {
+                Doll.StepLanded = false;
+                Sfx.Play("thud", 0.3f, Rng.F(1.2f, 1.45f));
+                Gore.DustPuff(new Vector2(SupportX, Scene.GroundY), new Vector2(0f, -1f), 0.34f);
+                _stepDelay = 0.05f;
+            }
+
+            if (Down) { Doll.StepLeg = -1; return; }
+
+            // His hips are on the dirt. Whatever the rest of this thinks he is not standing,
+            // and going on throwing boots is what left a downed man twitching a leg for ever.
             if (Scene.GroundY - PelvisP.Y < SagFloor * Scale)
             {
                 _sagging += dt;
@@ -678,33 +732,15 @@ namespace LLD
             }
             else _sagging = 0f;
 
-            float footWorld = SupportX;
-            float lever = PelvisP.X - footWorld;
-            ComX = PelvisP.X - Origin.X;        // the feet are kept in his own coordinates
-            ComVx = PelvisV.X;
-
+            _stepDelay = MathF.Max(0f, _stepDelay - dt);
             float hurt = Math.Clamp(Impairment * 0.6f + Kneel * 0.3f, 0f, 1f);
 
             if (!Stepping && _stepDelay <= 0f)
             {
-                // ankle and hip hauling the weight back over the boots, but only so hard
-                float maxAnkle = Art.Lerp(2400f, 800f, hurt) * Muscle;
-                float corrective = -(lever * 46f + PelvisV.X * 9f);
-                PelvisV.X += Math.Clamp(corrective, -maxAnkle, maxAnkle) * dt;
-            }
-
-            // the lean he is trying to hold; the trunk muscle chases it
-            LeanAng = Math.Clamp(MathF.Atan2(lever, h) * 0.95f, -0.55f, 0.55f);
-
-            _stepDelay = MathF.Max(0f, _stepDelay - dt);
-
-            if (!Stepping && _stepDelay <= 0f)
-            {
-                // Capture point: the spot he would have to plant a boot on to stop dead. A wider
-                // stance covers more ground, so a man who has already staggered is harder to tip.
+                // Capture point: the spot he would have to plant a boot on to stop dead. A
+                // wider stance covers more ground, so a man who has already staggered once is
+                // harder to tip than one stood square.
                 float capture = PelvisP.X + PelvisV.X / omega;
-                // the stance helps, but only so far: let this grow without limit and he simply
-                // stops stepping, leaving a boot stranded behind him
                 float support = 20f * Scale + MathF.Min(Stance, 90f) * 0.45f;
 
                 if (MathF.Abs(capture - footWorld) > support)
@@ -713,9 +749,9 @@ namespace LLD
                     float d = MathF.Sign(capture - footWorld);
                     bool desperate = MathF.Abs(capture - footWorld) > maxStep;
 
-                    // He does not simply fall over the moment he is out of balance. He throws a
-                    // leg out and tries, and only goes down once two of those have failed him.
-                    if (Crippled || (desperate && _failedSteps >= 2))
+                    // He does not go down the moment he is out of balance. He throws a leg out
+                    // and tries, and only loses it once two of those have failed him.
+                    if (desperate && _failedSteps >= 2)
                     {
                         Collapse(new Vector2(MathF.Sign(PelvisV.X == 0f ? 1f : PelvisV.X), -0.15f),
                                  Math.Clamp(MathF.Abs(PelvisV.X) / 300f, 0.7f, 1.6f));
@@ -723,21 +759,20 @@ namespace LLD
                     }
                     if (desperate) _failedSteps++;
 
-                    // the trailing boot swings: whichever one is already furthest the way he is going
-                    int leg = (d * _footP[0].X >= d * _footP[1].X) ? 0 : 1;
-                    float from = _footP[leg].X;
-                    // a stumbling man throws short of where he needs to, so one step is rarely enough
+                    // the trailing boot swings: whichever is already furthest the way he is going
+                    int leg = (d * FootP(0).X >= d * FootP(1).X) ? 0 : 1;
+                    float from = FootP(leg).X;
+                    // a stumbling man throws short of where he needs to, so one step rarely does
                     float reach = (capture - from) * Rng.F(0.6f, 0.92f) + d * 10f;
                     float to = from + Math.Clamp(reach, -maxStep, maxStep);
 
                     // boots do not pass through each other, and a man cannot do the splits
-                    float other = _footP[1 - leg].X;
+                    float other = FootP(1 - leg).X;
                     if (d > 0f) to = MathF.Max(to, other + 6f);
                     else to = MathF.Min(to, other - 6f);
                     to = Math.Clamp(to, other - MaxStance * Scale, other + MaxStance * Scale);
 
-                    ThrowFoot(leg, to);
-                    _stepDelay = 0.05f;
+                    ThrowFoot(leg, to, hurt);
                 }
             }
 
@@ -747,151 +782,43 @@ namespace LLD
             {
                 for (int i = 0; i < 2; i++)
                 {
-                    float out_ = _footP[i].X - PelvisP.X;
+                    float out_ = FootP(i).X - PelvisP.X;
                     if (MathF.Abs(out_) <= MaxReach * Scale) continue;
-                    ThrowFoot(i, PelvisP.X + MathF.Sign(out_) * MaxReach * 0.55f * Scale);
-                    _stepDelay = 0.05f;
+                    ThrowFoot(i, PelvisP.X + MathF.Sign(out_) * MaxReach * 0.55f * Scale, hurt);
                     break;
                 }
             }
 
             // settled: he gathers his feet back under him and walks back to his mark
-            if (!Stepping && MathF.Abs(PelvisV.X) < 40f && MathF.Abs(lever) < 12f)
+            if (!Stepping && MathF.Abs(PelvisV.X) < 110f && MathF.Abs(lever) < 32f)
             {
                 _failedSteps = 0;
                 for (int i = 0; i < 2; i++)
                 {
-                    float want = Origin.X + (i == 0 ? -13f : 21f) * Face * Scale;
-                    float gap = want - _footP[i].X;
-                    _footP[i].X += MathF.Min(38f * dt, MathF.Abs(gap)) * MathF.Sign(gap);
+                    float wantX = Origin.X + (i == 0 ? -13f : 21f) * Face * Scale;
+                    int f = Ragdoll.Foot(i);
+                    float gap = wantX - Doll.Pos[f].X;
+                    float shift = MathF.Min(38f * dt, MathF.Abs(gap)) * MathF.Sign(gap);
+                    Doll.Pos[f].X += shift;
+                    Doll.Prev[f].X += shift;
                 }
-                float drift = MathF.Min(38f * dt, MathF.Abs(ComX)) * -MathF.Sign(ComX);
-                PelvisP.X += drift;
-                ChestP.X += drift;
             }
-
-            // No formula for how low he stands. A wide stance puts the legs at an angle and the
-            // hips come down on their own; the only thing worth adding is a wounded knee giving.
-            Crouch += (Kneel * 40f - Crouch) * (1f - MathF.Exp(-7f * dt));
         }
 
         /// <summary>
-        /// Throws a boot at a spot on the street. It leaves the ground with a real velocity and
-        /// lands wherever gravity puts it, so no two strides are the same shape.
+        /// Throws a boot at a spot on the street. The arc is a target, not a path: the leg has
+        /// to get there through its own bones against everything else pulling on it, and a man
+        /// with little left in him swings slow and lands short.
         /// </summary>
-        void ThrowFoot(int leg, float targetX)
+        void ThrowFoot(int leg, float targetX, float hurt)
         {
-            _airborne[leg] = true;
-            float t = StepAir * Rng.F(0.85f, 1.15f);
-            float dx = targetX - _footP[leg].X;
-            _footV[leg] = new Vector2(dx / t, -0.5f * FootGravity * t);
+            Doll.StepLeg = leg;
+            Doll.StepFrom = FootP(leg);
+            Doll.StepTarget = new Vector2(targetX, FootFloor);
+            Doll.StepT = 0f;
+            Doll.StepDur = Art.Lerp(0.20f, 0.34f, hurt) * Rng.F(0.85f, 1.15f);
+            Doll.Asleep = false;
             Steps++;
-        }
-
-        /// <summary>Boots under their own gravity: in the air, or resting on the dirt.</summary>
-        void StepFeet(float dt)
-        {
-            float floor = FootFloor;
-            float maxLen = LegMaxAnkle * Scale;
-
-            for (int i = 0; i < 2; i++)
-            {
-                if (_airborne[i])
-                {
-                    _footV[i].Y += FootGravity * dt;
-                    _footP[i] += _footV[i] * dt;
-                    if (_footP[i].Y >= floor && _footV[i].Y > 0f)
-                    {
-                        _footP[i].Y = floor;
-                        _footV[i] = Vector2.Zero;
-                        _airborne[i] = false;
-                        Sfx.Play("thud", 0.3f, Rng.F(1.2f, 1.45f));
-                        Gore.DustPuff(new Vector2(_footP[i].X, Scene.GroundY), new Vector2(0f, -1f), 0.34f);
-                    }
-                }
-                else
-                {
-                    _footP[i].Y = floor;
-                    _footV[i] = Vector2.Zero;
-                }
-
-                // a leg is only so long: an overstretched boot gets dragged through the dirt
-                Vector2 d = PelvisP - _footP[i];
-                float len = d.Length();
-                if (!_airborne[i] && len > maxLen)
-                {
-                    _footP[i] += d / len * (len - maxLen);
-                    _footP[i].Y = floor;
-                }
-            }
-        }
-
-        /// <summary>
-        /// The trunk under gravity, carried by two legs that push along their own length. That
-        /// push is what holds him up, and it is also what tips him over when his weight drifts
-        /// off his feet: there is no separate rule for standing and for falling.
-        /// </summary>
-        void Simulate(float dt)
-        {
-            const float G = 2000f;
-            PelvisV.Y += G * dt;
-            ChestV.Y += G * dt;
-
-            StepFeet(dt);
-
-            float rest = LegRestAnkle * Scale - Crouch;
-            float maxLen = LegMaxAnkle * Scale;
-
-            for (int i = 0; i < 2; i++)
-            {
-                Vector2 foot = _footP[i];
-                Vector2 d = PelvisP - foot;
-                float len = d.Length();
-                if (len < 1f) continue;
-                Vector2 dir = d / len;
-
-                // a boot in the air carries nothing, which is exactly why a stumble is unstable
-                if (!_airborne[i])
-                {
-                    float push = ((rest - len) * 260f - Vector2.Dot(PelvisV, dir) * 16f) * Muscle;
-                    if (push > 0f) PelvisV += dir * push * dt;   // legs push, never pull
-                }
-
-                if (!_airborne[i] && len > maxLen)
-                {
-                    PelvisP = foot + dir * maxLen;
-                    float into = Vector2.Dot(PelvisV, dir);
-                    if (into > 0f) PelvisV -= dir * into;
-                }
-            }
-
-            // trunk muscle, holding the chest over the hips at the lean he is trying for
-            Vector2 want = Art.Rot(new Vector2(0f, -1f), LeanAng);
-            Vector2 chestTarget = PelvisP + want * (SpineLen * Scale);
-            ChestV += ((chestTarget - ChestP) * (300f * Muscle) - ChestV * 24f) * dt;
-
-            PelvisP += PelvisV * dt;
-            ChestP += ChestV * dt;
-
-            // the spine does not stretch, whatever the muscles are doing
-            Vector2 s = ChestP - PelvisP;
-            float sl = s.Length();
-            if (sl > 0.001f)
-            {
-                Vector2 corr = s / sl * (sl - SpineLen * Scale);
-                PelvisP += corr * 0.35f;
-                ChestP -= corr * 0.65f;
-            }
-
-            float floor = Scene.GroundY - 46f * Scale;
-            if (PelvisP.Y > floor) { PelvisP.Y = floor; if (PelvisV.Y > 0f) PelvisV.Y = 0f; }
-
-            PelvisV *= 1f - MathF.Min(1f, 0.6f * dt);
-            ChestV *= 1f - MathF.Min(1f, 1.4f * dt);
-
-            // shock takes the strength out of him
-            float want2 = 1f - Math.Clamp(Shock / 110f, 0f, 0.85f);
-            Muscle += (want2 - Muscle) * (1f - MathF.Exp(-6f * dt));
         }
 
         // ---------- wound placement ----------

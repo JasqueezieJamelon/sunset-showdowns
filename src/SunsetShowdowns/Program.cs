@@ -38,7 +38,7 @@ namespace LLD
     public class App
     {
         /// Bumped by the last digit on every change. Stays on 0.1.x until told otherwise.
-        public const string Version = "0.1.4.1";
+        public const string Version = "0.1.4.2";
 
         Settings S;
         RenderTexture2D _scene;
@@ -1841,8 +1841,8 @@ namespace LLD
             // held off the trigger, so a stray bullet cannot decide the answer.
             {
                 var hd = new Duel(Roster.All[0], S);
-                Vector2 hip = hd.HolsterPoint;
-                Vector2 above = hip - new Vector2(0f, 180f);
+                Vector2 Hip() => hd.HolsterPoint;
+                Vector2 Above() => Hip() - new Vector2(0f, 180f);
                 void Step(Vector2 m)
                 {
                     hd.Enemy.Disarmed = true;
@@ -1852,10 +1852,10 @@ namespace LLD
                 // put-away move, so this can only ever draw
                 bool Arm_()
                 {
-                    for (float t = 0f; t < 8f && hd.Phase != Phase.Live; t += dt) Step(hip);
+                    for (float t = 0f; t < 8f && hd.Phase != Phase.Live; t += dt) Step(Hip());
                     for (int i = 0; i < 500 && !hd._drawnOut; i++)
-                        Step(above + new Vector2(i % 2 == 0 ? 0f : 16f, 0f));
-                    for (float t = 0f; t < 0.25f; t += dt) Step(above);
+                        Step(Above() + new Vector2(i % 2 == 0 ? 0f : 16f, 0f));
+                    for (float t = 0f; t < 0.25f; t += dt) Step(Above());
                     return hd._drawnOut;
                 }
                 bool Drag(float seconds)
@@ -1863,7 +1863,7 @@ namespace LLD
                     int steps = Math.Max(1, (int)(seconds / dt));
                     for (int i = 1; i <= steps; i++)
                     {
-                        Step(Vector2.Lerp(above, hip, i / (float)steps));
+                        Step(Vector2.Lerp(Above(), Hip(), i / (float)steps));
                         if (!hd._drawnOut) return true;
                     }
                     return false;
@@ -1874,7 +1874,7 @@ namespace LLD
                 bool grabbedBack = false;
                 for (float t = 0f; t < Duel.DrawLock * 0.8f; t += dt)
                 {
-                    Step(above + new Vector2(t * 400f, 0f));
+                    Step(Above() + new Vector2(t * 400f, 0f));
                     if (hd._drawnOut) { grabbedBack = true; break; }
                 }
                 bool redrew = Arm_();
@@ -1884,14 +1884,15 @@ namespace LLD
                     $" stays put after={!grabbedBack} draws again={redrew} fast flick stows={fast}" +
                     (ok ? " - ok" : "  FAIL"));
 
-                // the action: the shot drops the hammer, then it comes back as the cylinder
-                // carries the next round round under it
-                Arm_();
-                var arm = hd.Mine.Arm;
+                // The action: the shot drops the hammer, then it comes back as the cylinder
+                // carries the next round round under it. Driven straight, not through a duel,
+                // so it is testing the gun and nothing else.
+                var arm = new ArmRig { HasGun = true, Holstered = false };
+                for (float t = 0f; t < 1f; t += dt) arm.StepAction(dt);
                 float cylWas = arm.Cylinder, hamWas = arm.Hammer;
-                hd.Update(dt, above, true, false);
+                arm.Kick(1f);
                 float hamFell = arm.Hammer;
-                for (float t = 0f; t < 0.6f; t += dt) Step(above);
+                for (float t = 0f; t < 0.6f; t += dt) arm.StepAction(dt);
                 float turned = (arm.Cylinder - cylWas) / ArmRig.Chamber;
                 bool actOk = hamWas > 0.9f && hamFell < 0.1f && arm.Hammer > 0.9f
                              && MathF.Abs(turned - 1f) < 0.01f;
@@ -2007,14 +2008,28 @@ namespace LLD
             }
             _net.Close(); _net = null;
 
+            // A man with nothing wrong with him stands still. He is held up by muscles pulling
+            // on a ragdoll now, and the failure that costs is a body that hums: a pull that
+            // leaves speed behind it reads to the balance code as falling, and he shuffles on
+            // the spot for ever. Hips up, weight over his boots, and no steps taken.
+            {
+                var q = new Fighter(Roster.All[1], Scene.EnemyStand, -1);
+                for (float t = 0f; t < 3f; t += dt) q.Update(dt, q.Arm.HolsterPoint, Fighter.ArmWeight, true);
+                int s0 = q.Steps;
+                for (float t = 0f; t < 2f; t += dt) q.Update(dt, q.Arm.HolsterPoint, Fighter.ArmWeight, true);
+                float hips = Scene.GroundY - q.PelvisP.Y, lever = q.PelvisP.X - q.SupportX;
+                bool ok = q.Steps == s0 && hips > 170f && MathF.Abs(lever) < 30f && !q.Down;
+                Console.WriteLine($"[check] stands still: {q.Steps - s0} steps in 2s, hips {hips:0}," +
+                    $" weight {lever:0}px off his boots, stance {q.Stance:0}" + (ok ? " - ok" : "  FAIL"));
+            }
+
             // A man whose legs have given out has to go down. He used to sink until his hips
             // were on the floor and then stand there for ever, throwing one boot out and
             // planting it again, over and over, because the balance code never stopped trying.
             {
                 var f = new Fighter(Roster.All[1], Scene.EnemyStand, -1);
                 f.PelvisV = new Vector2(-260f, 0f);         // shot, and carrying it backwards
-                for (float t = 0f; t < 6f; t += dt)
-                {
+                for (float t = 0f; t < 9f; t += dt)                {
                     f.Shock = 110f;                         // hold him at the edge of collapse
                     f.Update(dt, f.Arm.HolsterPoint, Fighter.ArmWeight, true);
                 }
@@ -2047,8 +2062,7 @@ namespace LLD
                     float ang = -0.1f - k * (MathF.PI * 0.9f / tries);
                     e.Crippled = k % 2 == 0;
                     e.Collapse(new Vector2(MathF.Cos(ang), MathF.Sin(ang)), 0.7f + k * 0.05f);
-                    for (float t = 0f; t < 6f; t += dt)
-                        e.Update(dt, e.Arm.HolsterPoint, Fighter.ArmWeight, false);
+                    for (float t = 0f; t < 9f; t += dt)                        e.Update(dt, e.Arm.HolsterPoint, Fighter.ArmWeight, false);
                     float lo = 1e9f, hi = -1e9f, lox = 1e9f, hix = -1e9f;
                     for (float t = 0f; t < 2f; t += dt)
                     {
