@@ -816,7 +816,10 @@ namespace LLD
                     float wantX = Origin.X + (i == 0 ? -13f : 21f) * Face * Scale;
                     int f = Ragdoll.Foot(i);
                     float gap = wantX - Doll.Pos[f].X;
-                    float shift = MathF.Min(38f * dt, MathF.Abs(gap)) * MathF.Sign(gap);
+                    // the further a boot is from where it belongs the harder he pulls it in,
+                    // or a wide stance he never asked for just stays wide
+                    float rate = MathF.Max(38f, MathF.Abs(gap) * 10f);
+                    float shift = MathF.Min(rate * dt, MathF.Abs(gap)) * MathF.Sign(gap);
                     Doll.Pos[f].X += shift;
                     Doll.Prev[f].X += shift;
                 }
