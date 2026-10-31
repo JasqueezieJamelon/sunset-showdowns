@@ -38,7 +38,7 @@ namespace LLD
     public class App
     {
         /// Bumped by the last digit on every change. Stays on 0.1.x until told otherwise.
-        public const string Version = "0.1.3.9";
+        public const string Version = "0.1.4.0";
 
         Settings S;
         RenderTexture2D _scene;

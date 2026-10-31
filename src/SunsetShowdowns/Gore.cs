@@ -575,13 +575,21 @@ namespace LLD
             Raylib.DrawLineEx(T(-29f, -12f), T(33f, -12f), 7f * s, p.Pal.HatBand);
         }
 
+        /// <summary>
+        /// A gun knocked out of a hand is the same gun it was a moment ago, so it is the real
+        /// drawing rather than a stand-in. It is anchored at the web of the hand, which is up
+        /// at one end of it, so the particle is offset back to the middle of the gun and spins
+        /// about that instead of about its own butt. The two passes are done here because the
+        /// gore layer is drawn once, with no ink pass of its own.
+        /// </summary>
         static void DrawLooseGun(Particle p)
         {
-            Vector2 T(float x, float y) => p.Pos + Art.Rot(new Vector2(x, y), p.Rot);
-            Art.Shape(new[] { T(-6f, -4f), T(4f, -4f), T(0f, 26f), T(-14f, 22f) }, p.Pal.Wood, 2.5f);
-            Art.Shape(new[] { T(-8f, -14f), T(22f, -14f), T(22f, 2f), T(-8f, 2f) }, p.Pal.Metal, 2.5f);
-            Art.CircleInked(T(10f, -6f), 9f, Art.Shade(p.Pal.Metal, 0.85f), 2.5f);
-            Art.Shape(new[] { T(22f, -13f), T(60f, -12f), T(60f, -2f), T(22f, -3f) }, p.Pal.Metal, 2.5f);
+            const float s = 1f;
+            Vector2 at = p.Pos - Art.Rot(new Vector2(29f, -5f * p.Face) * s, p.Rot);
+            Art.InkPass = true;
+            Fighter.Revolver(at, p.Rot, p.Pal, s, p.Face);
+            Art.InkPass = false;
+            Fighter.Revolver(at, p.Rot, p.Pal, s, p.Face);
         }
     }
 }

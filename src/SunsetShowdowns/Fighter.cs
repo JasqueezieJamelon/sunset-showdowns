@@ -1479,11 +1479,18 @@ namespace LLD
         /// </summary>
         public void DrawRevolver(Vector2 at, float angle, Palette pal, float scale,
                                  bool withHand = true, float hammer = 0f, float cyl = 0f)
+            => Revolver(at, angle, pal, Scale * scale, Face, withHand, hammer, cyl);
+
+        /// <summary>
+        /// The same gun with no fighter behind it, for the one that gets knocked out of a hand
+        /// and lands in the street. <paramref name="s"/> is the finished pixel scale.
+        /// </summary>
+        public static void Revolver(Vector2 at, float angle, Palette pal, float s, int face,
+                                    bool withHand = false, float hammer = 0f, float cyl = 0f)
         {
             const float Gx = 218f, Gy = 192f, Gk = 0.15f;
-            float s = Scale * scale;
             Vector2 T(float px, float py)
-                => at + Art.Rot(new Vector2((px - Gx) * Gk, (py - Gy) * Gk * Face) * s, angle);
+                => at + Art.Rot(new Vector2((px - Gx) * Gk, (py - Gy) * Gk * face) * s, angle);
 
             Color metal = pal.Metal;
             Color dark = Art.Shade(pal.Metal, 0.74f);
@@ -1516,7 +1523,7 @@ namespace LLD
             }, dark, 2.5f);
             Art.Seam(H(251f, 123f), H(270f, 131f), 1.4f * s, deep);
 
-            DrawGrip(at, angle, pal, scale);
+            Grip(at, angle, pal, s, face);
 
             // ---------- frame ----------
             Art.Shape(new[]
@@ -1539,18 +1546,18 @@ namespace LLD
                 T(352f, 217f), T(350f, 205f), T(350f, 124f),
             }, dark, deep, 1.6f * s * Gk * 6f);
 
-            // Six flutes on a drum that rolls. Each is only on view while it is on our side of
-            // the cylinder, and it thins out towards the edge the way a groove on a barrel does,
-            // so a sixth of a turn between shots reads without anything being spelled out.
+            // Six flutes on a drum that rolls, but a groove is a line, not a panel: drawn as
+            // outlined boxes they put two lines on the cylinder for every one groove and made a
+            // grille of it. Only the ones squarely on our side are on view - the rest are round
+            // the curve where they would be too foreshortened to read as anything - so one or
+            // two show at a time and the count changes as it turns.
             for (int i = 0; i < 6; i++)
             {
                 float a = cyl + i * (MathF.PI * 2f / 6f);
                 float c = MathF.Cos(a);
-                if (c < 0.14f) continue;
-                float yc = 164.5f + 36f * MathF.Sin(a);
-                float h = 13f * c;
-                Inner(new[] { T(360f, yc - h), T(443f, yc - h), T(443f, yc + h), T(360f, yc + h) },
-                      metal, deep, 1.4f * s * Gk * 6f);
+                if (c < 0.6f) continue;
+                float yc = 164.5f + 40f * MathF.Sin(a);
+                Art.Seam(T(362f, yc), T(441f, yc), 2.4f * s * c, deep);
             }
 
             if (!Art.InkPass) Raylib.DrawCircleV(T(409f, 229f), 7f * Gk * s, deep);
@@ -1567,10 +1574,10 @@ namespace LLD
             }, dark, 2.5f);
             Art.Seam(T(500f, 112f), T(686f, 112f), 2f * s, Art.Shade(pal.Metal, 1.14f));
 
-            // the front sight: a ramp standing off the muzzle end, serrated across its face
+            // the front sight: a ramp standing off the muzzle end
             Art.Shape(new[] { T(612f, 106f), T(659f, 87f), T(678f, 81f), T(690f, 87f), T(697f, 105f) },
                 metal, 2f);
-            Art.Seam(T(640f, 120f), T(688f, 120f), 1.6f * s, deep);
+
 
             // ---------- trigger, and the bow round it ----------
             Art.CapsuleInked(T(352f, 246f), T(361f, 272f), 7f * Gk * s, deep, 2f);
@@ -1586,7 +1593,7 @@ namespace LLD
             if (!withHand) return;
 
             // the wrist sits down inside the fist, below and behind the gun's own origin
-            DrawFist(T(151f, 279f), angle, pal.Hand, scale, pal.Gloved, true, true);
+            Fist(T(151f, 279f), angle, pal.Hand, s, face, pal.Gloved, true, true);
         }
 
         /// <summary>
@@ -1601,9 +1608,12 @@ namespace LLD
         /// </summary>
         public void DrawFist(Vector2 wrist, float angle, Color hand, float scale, bool gloved,
                              bool gunHand, bool onTrigger = false)
+            => Fist(wrist, angle, hand, Scale * scale, Face, gloved, gunHand, onTrigger);
+
+        public static void Fist(Vector2 wrist, float angle, Color hand, float s, int face,
+                                bool gloved, bool gunHand, bool onTrigger = false)
         {
-            float s = Scale * scale;
-            Vector2 T(float x, float y) => wrist + Art.Rot(new Vector2(x, y * Face) * s, angle);
+            Vector2 T(float x, float y) => wrist + Art.Rot(new Vector2(x, y * face) * s, angle);
 
             var pts = new[]
             {
@@ -1650,11 +1660,13 @@ namespace LLD
         /// holstered gun has to be painted again over the forearm that hangs across it.
         /// </summary>
         public void DrawGrip(Vector2 at, float angle, Palette pal, float scale)
+            => Grip(at, angle, pal, Scale * scale, Face);
+
+        public static void Grip(Vector2 at, float angle, Palette pal, float s, int face)
         {
             const float Gx = 218f, Gy = 192f, Gk = 0.15f;
-            float s = Scale * scale;
             Vector2 T(float px, float py)
-                => at + Art.Rot(new Vector2((px - Gx) * Gk, (py - Gy) * Gk * Face) * s, angle);
+                => at + Art.Rot(new Vector2((px - Gx) * Gk, (py - Gy) * Gk * face) * s, angle);
 
             Art.Shape(new[]
             {
