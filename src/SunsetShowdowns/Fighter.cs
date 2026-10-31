@@ -95,11 +95,11 @@ namespace LLD
 
         const float FootGravity = 2600f;
         const float StepAir = 0.22f;        // roughly how long a boot is off the ground
-        const float LegRestAnkle = 166f;    // pelvis to ankle, stood up straight
-        const float LegMaxAnkle = 168f;
+        const float LegRestAnkle = 186f;    // pelvis to ankle, stood up straight
+        const float LegMaxAnkle = 188f;
         const float MaxStance = 150f;   // how far apart the boots may ever get
         // hips this far off the dirt and his legs have plainly gone; normal is about 200
-        const float SagFloor = 110f;
+        const float SagFloor = 123f;
         const float MaxReach = 92f;    // how far a boot may sit from the hips before it must move
         public const float ArmWeight = 0.5f;   // one standard feel for the gun hand
 
@@ -119,7 +119,7 @@ namespace LLD
             Arm.UpperLen = 82f * Scale;
             Arm.ForeLen = 92f * Scale;
             Arm.Shoulder = L2W(new Vector2(10f, -318f));
-            Arm.HolsterPoint = L2W(new Vector2(48f, -158f));
+            Arm.HolsterPoint = L2W(new Vector2(48f, -172f));
             Arm.Snap(Arm.HolsterPoint);
             _skullJitter = new float[24];
             for (int i = 0; i < _skullJitter.Length; i++) _skullJitter[i] = Rng.F(0.62f, 1.0f);
@@ -202,7 +202,7 @@ namespace LLD
         float _sagging;             // how long his hips have been down near the dirt
         public float Muscle = 1f;          // 1 standing strong, 0 limp
         public const float SpineLen = 112f;
-        public const float RestLeg = 200f; // pelvis to the sole when he is stood up straight
+        public const float RestLeg = 224f; // pelvis to the sole when he is stood up straight
         public const float MaxLeg = 211f;
 
         static readonly Vector2 Com = new Vector2(0f, -200f);
@@ -319,7 +319,7 @@ namespace LLD
         /// </summary>
         public void LegJoints(int i, out Vector2 hip, out Vector2 knee, out Vector2 ankle)
         {
-            const float Thigh = 92f, Shin = 90f;
+            const float Thigh = 103f, Shin = 101f;
             hip = Pose(i == 0 ? -7f : 15f, -212f);
             ankle = FootP(i);
 
@@ -656,7 +656,7 @@ namespace LLD
             Doll.Step(dt, Scene.GroundY);
 
             Arm.Shoulder = L2W(new Vector2(10f, -318f));
-            Arm.HolsterPoint = L2W(new Vector2(48f, -158f));
+            Arm.HolsterPoint = L2W(new Vector2(48f, -172f));
             Arm.Holstered = holstered;
 
             // a wounded man cannot hold the gun still

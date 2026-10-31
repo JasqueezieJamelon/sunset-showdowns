@@ -92,12 +92,12 @@ namespace LLD
             Pos[Head] = P(6f, -404f);
             Pos[Neck] = P(2f, -352f);
             Pos[Chest] = P(0f, -312f);
-            Pos[Pelvis] = P(0f, -202f);
+            Pos[Pelvis] = P(0f, -226f);
 
             Pos[FootB] = P(-13f, -38f);
             Pos[FootF] = P(21f, -38f);
-            Pos[KneeB] = P(16f, -120f);     // knees a shade forward, as a standing leg is
-            Pos[KneeF] = P(26f, -120f);
+            Pos[KneeB] = P(16f, -134f);     // knees a shade forward, as a standing leg is
+            Pos[KneeF] = P(26f, -134f);
 
             Pos[ElbowB] = P(-30f, -252f);
             Pos[HandB] = P(-33f, -186f);
