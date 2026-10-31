@@ -38,7 +38,7 @@ namespace LLD
     public class App
     {
         /// Bumped by the last digit on every change. Stays on 0.1.x until told otherwise.
-        public const string Version = "0.1.4.8";
+        public const string Version = "0.1.4.9";
 
         Settings S;
         RenderTexture2D _scene;
@@ -2035,6 +2035,25 @@ namespace LLD
                 Console.WriteLine($"[check] front leg: hip ({h2.X:0},{h2.Y:0}) knee ({k2.X:0},{k2.Y:0})" +
                     $" ankle ({a2.X:0},{a2.Y:0}), knee breaks {k2.X - h2.X:0} forward" +
                     (kneeOk ? " - ok" : "  FAIL"));
+
+                // Shoot the leg you can see and you must find bone. The bones used to be
+                // pinned at fixed spots in the body while the legs moved around them, so a
+                // bullet through the knee came out the other side having hit nothing.
+                int boneHits = 0; var names = new System.Collections.Generic.List<string>();
+                foreach (var (name, at) in new[] { ("thigh", (h2 + k2) * 0.5f), ("knee", k2), ("shin", (k2 + a2) * 0.5f) })
+                {
+                    Vector2 w = q.L2W(at);
+                    Vector2 from = w - new Vector2(q.Face * 400f, 0f);
+                    Vector2 shotDir = new Vector2(q.Face, 0f);
+                    if (!q.Raycast(from, shotDir, 900f, out Zone z, out Vector2 pt, out _) || z != Zone.Leg)
+                    { names.Add(name + ": not even a leg"); continue; }
+                    var r = q.TraceShot(from, shotDir, 900f, z, pt);
+                    bool bone = r.Organs.Exists(o => o.Kind == OrganKind.Femur || o.Kind == OrganKind.Tibia);
+                    if (bone) boneHits++;
+                    names.Add($"{name}: {r.Note} ({r.Shock:0} shock)");
+                }
+                Console.WriteLine($"[check] leg shots find bone: {boneHits}/3 - {string.Join(", ", names)}" +
+                    (boneHits == 3 ? " - ok" : "  FAIL"));
             }
 
             // A stagger has to end. Either he catches himself and stands still again, or he

@@ -319,14 +319,14 @@ namespace LLD
         /// </summary>
         // How wide the leg is at each landmark. One set of numbers so the drawing, the hit
         // volumes and the downed body all agree about the shape of the limb.
-        public const float ThighTop = 17f, ThighLow = 13.5f, CalfTop = 13f, AnkleW = 9.5f;
+        public const float ThighTop = 17f, ThighLow = 13.5f, CalfTop = 16f, AnkleW = 13f;
         // how far forward a standing knee sits off the hip-to-ankle line
-        public const float KneeBreak = 23f;
+        public const float KneeBreak = 21f;
 
         public void LegJoints(int i, out Vector2 hip, out Vector2 knee, out Vector2 ankle)
         {
-            const float Thigh = 103f, Shin = 101f;
-            hip = Pose(i == 0 ? -7f : 15f, -212f);
+            const float Thigh = 99f, Shin = 97f;
+            hip = Pose(i == 0 ? -7f : 15f, -201f);
             ankle = FootP(i);
 
             // the leg is a fixed length: it cannot reach past itself to a boot
@@ -356,6 +356,30 @@ namespace LLD
             if (Kneel > 0.01f) knee += new Vector2(Face * 18f * Kneel * Scale, 10f * Kneel * Scale);
         }
 
+        /// <summary>
+        /// The leg bones where the legs actually are, in this body's own space, so what a
+        /// bullet finds is the leg you can see rather than a pair of sticks left behind at the
+        /// pose the man was first drawn in.
+        /// </summary>
+        List<Organ> LegBones()
+        {
+            var bones = new List<Organ>(4);
+            if (Down && Doll.Active)
+            {
+                var d = Doll;
+                Vector2 p = DollW2L(d.Pos[Ragdoll.Pelvis]);
+                Anatomy.AddLegBones(bones, p, DollW2L(d.Pos[Ragdoll.KneeB]), DollW2L(d.Pos[Ragdoll.FootB]));
+                Anatomy.AddLegBones(bones, p, DollW2L(d.Pos[Ragdoll.KneeF]), DollW2L(d.Pos[Ragdoll.FootF]));
+                return bones;
+            }
+            for (int i = 0; i < 2; i++)
+            {
+                LegJoints(i, out Vector2 hip, out Vector2 knee, out Vector2 ankle);
+                Anatomy.AddLegBones(bones, W2L(hip), W2L(knee), W2L(ankle));
+            }
+            return bones;
+        }
+
         public List<HitVolume> Volumes()
         {
             var list = new List<HitVolume>(10);
@@ -363,8 +387,8 @@ namespace LLD
             {
                 list.Add(new HitVolume { Zone = Zone.Head, A = Doll.Pos[Ragdoll.Head], B = Doll.Pos[Ragdoll.Neck], R = 30f * Scale });
                 list.Add(new HitVolume { Zone = Zone.Torso, A = Doll.Pos[Ragdoll.Chest], B = Doll.Pos[Ragdoll.Pelvis], R = 34f * Scale });
-                list.Add(new HitVolume { Zone = Zone.Leg, A = Doll.Pos[Ragdoll.Pelvis], B = Doll.Pos[Ragdoll.KneeF], R = 15f * Scale });
-                list.Add(new HitVolume { Zone = Zone.Leg, A = Doll.Pos[Ragdoll.KneeF], B = Doll.Pos[Ragdoll.FootF], R = 11f * Scale });
+                list.Add(new HitVolume { Zone = Zone.Leg, A = Doll.Pos[Ragdoll.Pelvis], B = Doll.Pos[Ragdoll.KneeF], R = 18f * Scale });
+                list.Add(new HitVolume { Zone = Zone.Leg, A = Doll.Pos[Ragdoll.KneeF], B = Doll.Pos[Ragdoll.FootF], R = 15f * Scale });
                 return list;
             }
 
@@ -379,8 +403,8 @@ namespace LLD
             for (int i = 0; i < 2; i++)
             {
                 LegJoints(i, out Vector2 hip, out Vector2 knee, out Vector2 ankle);
-                list.Add(new HitVolume { Zone = Zone.Leg, A = hip, B = knee, R = 15f * Scale });
-                list.Add(new HitVolume { Zone = Zone.Leg, A = knee, B = ankle, R = 11f * Scale });
+                list.Add(new HitVolume { Zone = Zone.Leg, A = hip, B = knee, R = 18f * Scale });
+                list.Add(new HitVolume { Zone = Zone.Leg, A = knee, B = ankle, R = 15f * Scale });
             }
             list.Add(new HitVolume { Zone = Zone.Arm, A = Arm.Shoulder, B = Arm.Elbow, R = 15f * Scale });
             list.Add(new HitVolume { Zone = Zone.Arm, A = Arm.Elbow, B = Arm.Hand, R = 14f * Scale });
@@ -425,7 +449,7 @@ namespace LLD
             Vector2 ld = Vector2.Normalize(W2LDir(worldDir));
             Vector2 lEntry = W2L(entry);
 
-            var strikes = Anatomy.Trace(lf, ld, len / Scale);
+            var strikes = Anatomy.Trace(lf, ld, len / Scale, LegBones());
             float worstShock = 0f, sumShock = 0f;
             foreach (var s in strikes)
             {

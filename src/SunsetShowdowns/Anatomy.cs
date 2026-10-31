@@ -7,7 +7,7 @@ namespace LLD
     public enum OrganKind
     {
         None, Brain, BrainStem, Jaw, Throat, Spine, Heart, Aorta,
-        Lung, Liver, Kidney, Gut, Pelvis, Femur, Humerus, Flesh
+        Lung, Liver, Kidney, Gut, Pelvis, Femur, Tibia, Humerus, Flesh
     }
 
     /// <summary>
@@ -58,15 +58,33 @@ namespace LLD
             new Organ { Kind = OrganKind.Kidney,    Name = "a kidney",       A = new Vector2(-14f, -252f),B = new Vector2(-14f, -252f),R = 9f,  Shock = 44f, Bleed = 10f, Gore = 1.2f },
             new Organ { Kind = OrganKind.Gut,       Name = "the gut",        A = new Vector2(4f, -248f),  B = new Vector2(2f, -214f),  R = 18f, Shock = 30f, Bleed = 4.5f, Gore = 1.1f },
             new Organ { Kind = OrganKind.Pelvis,    Name = "the hip",        A = new Vector2(4f, -198f),  B = new Vector2(4f, -198f),  R = 16f, Shock = 58f, Bleed = 14f, Cripple = true, Gore = 1.2f },
-            // a thigh takes him to one knee rather than off his feet
-            new Organ { Kind = OrganKind.Femur,     Name = "the thigh",      A = new Vector2(-18f, -198f),B = new Vector2(-26f, -112f),R = 9f,  Shock = 42f, Bleed = 7f },
-            new Organ { Kind = OrganKind.Femur,     Name = "the thigh",      A = new Vector2(16f, -198f), B = new Vector2(22f, -112f), R = 9f,  Shock = 42f, Bleed = 7f },
         };
 
+        /// <summary>
+        /// The bones of one leg, built from where that leg actually is. They cannot live in the
+        /// fixed body map above: the boots step, the knee breaks forward, and a man on the
+        /// ground has his legs folded under him. A thigh takes him to one knee; a shin is less
+        /// than that but it is still bone, and before this there was nothing below the knee to
+        /// hit at all, so shooting a man's calf only ever tore cloth.
+        /// </summary>
+        public static void AddLegBones(List<Organ> into, Vector2 hip, Vector2 knee, Vector2 ankle)
+        {
+            into.Add(new Organ { Kind = OrganKind.Femur, Name = "the thigh", A = hip, B = knee, R = 11f, Shock = 44f, Bleed = 7f });
+            into.Add(new Organ { Kind = OrganKind.Tibia, Name = "the shin", A = knee, B = ankle, R = 8.5f, Shock = 32f, Bleed = 5f });
+        }
+
         /// <summary>Everything the bullet passes through, nearest first.</summary>
-        public static List<Strike> Trace(Vector2 from, Vector2 dir, float len)
+        public static List<Strike> Trace(Vector2 from, Vector2 dir, float len, List<Organ> also = null)
         {
             var hits = new List<Strike>(4);
+            if (also != null)
+                foreach (var o in also)
+                {
+                    float t2 = o.A == o.B
+                        ? Art.RayCircle(from, dir, len, o.A, o.R)
+                        : Art.RayCapsule(from, dir, len, o.A, o.B, o.R);
+                    if (t2 >= 0f) hits.Add(new Strike { Organ = o, Local = from + dir * t2, T = t2 });
+                }
             foreach (var o in Parts)
             {
                 float t = o.A == o.B
