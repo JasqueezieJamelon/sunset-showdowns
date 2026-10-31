@@ -38,7 +38,7 @@ namespace LLD
     public class App
     {
         /// Bumped by the last digit on every change. Stays on 0.1.x until told otherwise.
-        public const string Version = "0.1.5.0";
+        public const string Version = "0.1.5.1";
 
         Settings S;
         RenderTexture2D _scene;
@@ -835,16 +835,15 @@ namespace LLD
         void DrawTrainingHud()
         {
             if (_train == null) return;
-            Raylib.DrawRectangleRec(new Rectangle(0f, 0f, Art.VW, 92f), new Color(18, 12, 16, 150));
 
-            Art.Text(Art.Display, "TRAINING", new Vector2(Art.VW * 0.5f, 26f), 40f, new Color(250, 214, 140, 255), true);
-
+            // No bar and no "TRAINING" label over it: you came here on purpose and you are
+            // looking at a row of men on a range. What is left is the two numbers that change.
             string left = _train.Standing + " STANDING";
-            Art.Text(Art.Body, left, new Vector2(44f, 36f), 30f, new Color(226, 208, 182, 220));
+            Art.TextInked(Art.Body, left, new Vector2(44f, 40f), 30f, new Color(236, 220, 196, 230), false, 1f, 3f);
 
             string acc = _train.Shots > 0 ? $"{_train.Hits}/{_train.Shots}" : "0/0";
             float aw = Art.Measure(Art.Body, acc, 30f).X;
-            Art.Text(Art.Body, acc, new Vector2(Art.VW - 44f - aw, 36f), 30f, new Color(226, 208, 182, 220));
+            Art.TextInked(Art.Body, acc, new Vector2(Art.VW - 44f - aw, 40f), 30f, new Color(236, 220, 196, 230), false, 1f, 3f);
 
             const float WheelR = 92f;
             Vector2 wheel = new Vector2(194f, Art.VH - 178f);
@@ -1136,8 +1135,10 @@ namespace LLD
         {
             if (_duel == null) return;
 
-            // top bar
-            Raylib.DrawRectangleRec(new Rectangle(0f, 0f, Art.VW, 92f), new Color(18, 12, 16, 150));
+            // No bar across the top and no running commentary. The skulls say how many lives
+            // are left and the cylinder says how many rounds; everything else the street
+            // already tells you, and a man's name repeated over his own head all round is
+            // just something else in the way of the fight.
 
             // Your own furniture sits on your own side of the street: in a match the man on the
             // right reads his cylinder on the right, and neither of you sees the other's rounds.
@@ -1147,9 +1148,9 @@ namespace LLD
 
             // a match is as long as the host said it would be, so the row of skulls is too
             int total = _duel.IsNet ? WinsNeeded : Lives0;
-            float skullR = total > 6 ? 12f : 15f;
+            float skullR = total > 6 ? 17f : 22f;
             int lost = _duel.IsNet ? _net.Score[1 - mySide] : Lives0 - _lives;
-            HudBits.Skulls(corner, 46f, total, lost, dir, skullR);
+            HudBits.Skulls(corner, 54f, total, lost, dir, skullR);
 
             // down out of the way of the fight, and big enough to read at a glance
             const float WheelR = 92f;
@@ -1162,21 +1163,14 @@ namespace LLD
             if (_duel.IsNet)
             {
                 float farCorner = mySide == 0 ? Art.VW - 44f : 44f;
-                HudBits.Skulls(farCorner, 46f, total, _net.Score[mySide], -dir, skullR);
+                HudBits.Skulls(farCorner, 54f, total, _net.Score[mySide], -dir, skullR);
 
-                string them = (_net.RemoteName ?? "").ToUpperInvariant();
-                Art.Text(Art.Display, them, new Vector2(Art.VW * 0.5f, 28f), 40f, new Color(250, 214, 140, 255), true);
-                float tw = Art.Measure(Art.Display, them, 40f).X;
-                Art.Text(Art.Body, _net.PingMs + " ms", new Vector2(Art.VW * 0.5f + tw * 0.5f + 22f, 36f), 26f, new Color(186, 168, 148, 200));
-                DrawHudTail();
-                return;
+                // the one number worth keeping in a match: a bad line is worth knowing about
+                string ping = _net.PingMs + " MS";
+                float pw = Art.Measure(Art.Body, ping, 24f).X;
+                Art.Text(Art.Body, ping, new Vector2(dir > 0 ? corner : corner - pw, 100f), 24f,
+                    new Color(186, 168, 148, 150), false);
             }
-
-            string name = _duel.Def.Name.ToUpperInvariant();
-            Art.Text(Art.Display, name, new Vector2(Art.VW * 0.5f, 28f), 40f, new Color(250, 214, 140, 255), true);
-            float nw = Art.Measure(Art.Display, name, 40f).X;
-            Art.Text(Art.Body, $"{Math.Min(_round + 1, Roster.All.Length)}/{Roster.All.Length}",
-                new Vector2(Art.VW * 0.5f + nw * 0.5f + 22f, 36f), 28f, new Color(186, 168, 148, 220));
 
             DrawHudTail();
         }
@@ -1209,9 +1203,8 @@ namespace LLD
                     Art.TextInked(Art.Body, _duel.Subline, new Vector2(Art.VW * 0.5f, 170f + size * 0.95f), 36f, new Color(238, 222, 196, 255), true, 1f, 4f);
             }
 
-            if (_duel.Phase == Phase.Count)
-                Art.TextInked(Art.Body, "hold still", new Vector2(Art.VW * 0.5f, Art.VH - 74f),
-                    30f, new Color(228, 212, 188, 180), true, 1f, 4f);
+            // "hold still" used to sit along the bottom through every count. READY is already
+            // up in letters a hundred points tall, and a man who twitches finds out at once.
         }
 
         void DrawPause()
