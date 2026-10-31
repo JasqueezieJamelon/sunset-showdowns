@@ -199,6 +199,7 @@ namespace LLD
             Killed = s.Dead;
         }
         float _stagger;             // how fast he is running out of steps
+        float _legSpent;            // 0 fresh, 1 nothing left in them
         float _sagging;             // how long his hips have been down near the dirt
         public float Muscle = 1f;          // 1 standing strong, 0 limp
         public const float SpineLen = 112f;
@@ -753,9 +754,19 @@ namespace LLD
             Doll.Muscle = Down ? 0f : Muscle;
             Doll.Lean = LeanAng;
             Doll.StandHeight = RestLeg * Scale - Crouch * Scale;
+            // the legs aim at a length their own bones can actually be, less however far he sinks
+            Doll.LegRest = Doll.LegLen - Crouch * Scale;
             Doll.GroundY = Scene.GroundY;
             Doll.Face = Face;
             Doll.StepLift = 34f * Scale;
+
+            // What his legs have left. Every stagger spends some of it and standing quietly
+            // buys it back, so a man can save himself once or twice and then cannot. This is
+            // the only thing that ends a stagger now: there is no count of steps and no timer
+            // that decides he has had enough. When there is not enough leg left to carry him
+            // the hips come down, and coming down is what takes him off his feet.
+            _legSpent = Math.Clamp(_legSpent - dt * 0.55f, 0f, 1f);
+            Doll.LegPower = Math.Clamp((1f - _legSpent * 0.85f) * (0.45f + Blood / 110f), 0.1f, 1f);
 
             if (Doll.StepLanded)
             {
@@ -792,13 +803,6 @@ namespace LLD
             // reads as a bouncing boot rather than a man going over. Staggering has to end in
             // the dirt or it is not staggering.
             _stagger = MathF.Max(0f, _stagger - dt * 1.2f);
-            if (_stagger > 3.4f)
-            {
-                float way = PelvisV.X != 0f ? MathF.Sign(PelvisV.X) : Face;
-                Collapse(new Vector2(way, -0.2f),
-                         Math.Clamp(MathF.Abs(PelvisV.X) / 300f, 0.6f, 1.5f));
-                return;
-            }
 
             if (!Stepping && _stepDelay <= 0f)
             {
@@ -814,14 +818,11 @@ namespace LLD
                     float d = MathF.Sign(capture - footWorld);
                     bool desperate = MathF.Abs(capture - footWorld) > maxStep;
 
-                    // He does not go down the moment he is out of balance. He throws a leg out
-                    // and tries, and only loses it once two of those have failed him.
-                    if (desperate && _failedSteps >= 2)
-                    {
-                        Collapse(new Vector2(MathF.Sign(PelvisV.X == 0f ? 1f : PelvisV.X), -0.15f),
-                                 Math.Clamp(MathF.Abs(PelvisV.X) / 300f, 0.7f, 1.6f));
-                        return;
-                    }
+                    // He does not give up at a count of two any more. He throws the leg out
+                    // every time, and whether it saves him is settled by whether the leg
+                    // reaches the street in front of his weight and has anything left to push
+                    // with when it gets there. A step he cannot reach costs him the strength
+                    // he spent on it, which is why the third one is weaker than the first.
                     if (desperate) _failedSteps++;
 
                     // the trailing boot swings: whichever is already furthest the way he is going
@@ -923,6 +924,11 @@ namespace LLD
             Doll.Asleep = false;
             Steps++;
             _stagger += 1f;
+
+            // The step costs him. A long one he is only just going to reach costs him more
+            // than a short gather, and it is this, not a counter, that runs him out of legs.
+            float lunge = MathF.Abs(targetX - Doll.StepFrom.X) / (MaxReach * Scale);
+            _legSpent = Math.Clamp(_legSpent + 0.16f + lunge * 0.30f, 0f, 1f);
         }
 
         // ---------- wound placement ----------

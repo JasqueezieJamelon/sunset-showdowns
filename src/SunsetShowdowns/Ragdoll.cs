@@ -47,6 +47,34 @@ namespace LLD
         public float StepT, StepDur = 0.24f, StepLift = 34f;
         public bool StepLanded;         // true for the frame a boot comes down
 
+        /// <summary>
+        /// What his legs have left, 0 to 1. A man who has already thrown himself about to stay
+        /// up has less of it, and when there is not enough left to carry him the hips come
+        /// down on their own. Nothing decides that he falls: the legs just stop being enough.
+        /// </summary>
+        public float LegPower = 1f;
+
+        /// <summary>How hard each leg is working this tick, 0 to 1 of what it has.</summary>
+        public float LoadB, LoadF;
+
+        /// <summary>The leg with the knee straight, and the length the muscles are aiming at.</summary>
+        public float LegLen = 188f, LegRest = 188f;
+
+        /// <summary>Diagnostics for the test run: what each leg thinks it is doing.</summary>
+        public float DbgSquashB, DbgSquashF, DbgShareB, DbgShareF;
+        public bool DbgPlantB, DbgPlantF;
+
+        // What one leg is worth. The spring is the thigh, the damper is the knee, and the
+        // ankle numbers are small on purpose: sideways is the weak direction, and a man is
+        // taken off his feet through his ankles or not at all.
+        const float Carry = 1400f;      // what the pair of them hold up between them
+        const float LegSpring = 520f;   // the trim on top: push per pixel short of standing
+        const float LegDamp = 44f;      // the knee soaking up the drop
+        const float LegMax = 13000f;    // all one leg has
+        const float AnkleSpring = 26f;
+        const float AnkleDamp = 15f;
+        const float AnkleMax = 1700f;
+
         public float SpineLen { get; private set; }
         public float NeckLen { get; private set; }
         public float HeadLen { get; private set; }
@@ -123,6 +151,14 @@ namespace LLD
             Bone(Chest, Pelvis, 1f);
             Bone(Pelvis, KneeB, 1f); Bone(KneeB, FootB, 1f);
             Bone(Pelvis, KneeF, 1f); Bone(KneeF, FootF, 1f);
+
+            // What the leg measures with the knee straight. The muscles have to want a length
+            // the bones can actually be, or they spend all day hauling against their own
+            // skeleton: asking for a leg shorter than it is left him hanging on straight bones
+            // with the spring pulling downwards, which is not a man standing on his legs, it
+            // is a man suspended from them.
+            LegLen = Vector2.Distance(Pos[Pelvis], Pos[KneeB]) + Vector2.Distance(Pos[KneeB], Pos[FootB]);
+            LegRest = LegLen;
             Bone(Chest, ElbowB, 0.9f); Bone(ElbowB, HandB, 0.9f);
             Bone(Chest, ElbowG, 0.9f); Bone(ElbowG, HandG, 0.9f);
             // braces: keep the trunk from folding and the head from flopping through the chest
@@ -220,6 +256,7 @@ namespace LLD
                     Pos[l.B] -= corr * (2f * wb / sum);
                 }
                 Joints();
+                Plant(ground);
                 Collide(ground);
             }
 
@@ -248,8 +285,21 @@ namespace LLD
                 Vector2 p = Vector2.Lerp(StepFrom, StepTarget, StepT);
                 p.Y -= MathF.Sin(StepT * MathF.PI) * StepLift;
                 int sf = Foot(StepLeg);
-                Pos[sf] += (p - Pos[sf]) * 0.45f;
-                if (StepT >= 1f) { StepLeg = -1; StepLanded = true; }
+
+                // The boot is driven at the spot, not placed on it. It used to be moved
+                // halfway there every tick whatever else was happening to him, which is a
+                // puppet string: the leg could not be knocked off its path and it could not
+                // arrive early, so a stumble always looked like the same hop. Carrying the
+                // boot's own motion through the pull leaves it something to be shoved off.
+                Vector2 keep = (Pos[sf] - Prev[sf]) * 0.55f;
+                Pos[sf] += (p - Pos[sf]) * 0.38f;
+                Prev[sf] = Pos[sf] - keep;
+
+                // A reaching leg finds the street the moment the street is there. Waiting out
+                // the arc is what left a boot hanging in the air with his weight already past
+                // it; getting it down early is most of what catching yourself is.
+                bool grounded = StepT > 0.4f && Pos[sf].Y >= GroundY - Clear[sf] - 2.5f;
+                if (StepT >= 1f || grounded) { StepLeg = -1; StepLanded = true; }
             }
 
             float m = Muscle;
@@ -266,23 +316,96 @@ namespace LLD
                 Prev[i] = Pos[i] - v;
             }
 
-            // Legs. Each planted boot pushes the hips back up to standing height above itself.
-            // Straight up is strong - that is bone and the big muscles of the thigh. Sideways
-            // is weak, because all he has to drag his weight back over his feet with is his
-            // ankles, and that is exactly why a hard enough shove takes him off them.
-            int down = 0;
-            float sumX = 0f;
-            for (int leg = 0; leg < 2; leg++)
-                if (Planted(leg)) { down++; sumX += Pos[Foot(leg)].X; }
-
-            if (down > 0)
+            // A shove rather than a teleport: it changes where the part is going instead of
+            // where it is. That is what lets two legs add up - two pulls on the same point
+            // just fight over it, two pushes are twice the push.
+            void Push(int i, Vector2 accel)
             {
-                Vector2 want = new Vector2(sumX / down, GroundY - StandHeight);
-                Vector2 e = want - Pos[Pelvis];
-                // Straight up is strong - that is bone and the whole of his thigh. Sideways is
-                // weak, because all he has to haul his weight back over his boots with is his
-                // ankles, and that is exactly why a hard enough shove takes him off them.
-                Pull(Pelvis, Pos[Pelvis] + new Vector2(e.X * 0.10f, e.Y), 0.34f * m, 0.45f * m);
+                Vector2 v = Pos[i] - Prev[i] + accel * (Fixed * Fixed);
+                Prev[i] = Pos[i] - v;
+            }
+
+            // Legs.
+            //
+            // Each planted boot is its own strut, and the two of them add up. This used to be
+            // one pull on the hips towards a point above the MIDDLE of the feet, which is not
+            // two legs holding a man up - it is one invisible leg standing between his boots,
+            // and it is why the moment a real boot left the ground the whole body sagged onto
+            // the other one and pogoed. Now each leg pushes along its own bone from its own
+            // foot, so two legs down carry him with room to spare, one leg down only just
+            // holds him, and none at all is a man on his way to the dirt.
+            //
+            // Three things come out of each leg:
+            //   - a spring along the bone, strong, because that is thigh and femur;
+            //   - a damper along the same line, which is what a knee is for. Without it the
+            //     leg is a pogo stick and the boot bounces for ever;
+            //   - the ankle, sideways, weak and hard-limited. All a standing man has to drag
+            //     his weight back over his boots is his ankles, and that is exactly why a hard
+            //     enough shove takes him off them.
+            float power = Math.Clamp(LegPower, 0f, 1f);
+            LoadB = LoadF = 0f;
+
+            // How his weight is split between the two boots. The boot nearer to being under
+            // him carries more of him, by the plain lever rule, and the split slides as he
+            // moves across them. This is the part that was missing: without it each leg was
+            // only a spring, and two stiff springs onto one point do not share anything - the
+            // one that happens to be a hair shorter takes the lot, which is why he stood with
+            // all of himself on the back boot and the front one along for the ride.
+            bool pB = Planted(0), pF = Planted(1);
+            float shareB, shareF;
+            if (pB && pF)
+            {
+                float xb = Pos[Foot(0)].X, xf = Pos[Foot(1)].X, span = xf - xb;
+                if (MathF.Abs(span) > 2f)
+                {
+                    shareB = Math.Clamp((xf - Pos[Pelvis].X) / span, 0f, 1f);
+                    shareF = 1f - shareB;
+                }
+                else shareB = shareF = 0.5f;
+            }
+            else { shareB = pB ? 1f : 0f; shareF = pF ? 1f : 0f; }
+            DbgShareB = shareB; DbgShareF = shareF; DbgPlantB = pB; DbgPlantF = pF;
+
+            for (int leg = 0; leg < 2; leg++)
+            {
+                if (!Planted(leg)) continue;
+                int f = Foot(leg);
+                Vector2 d = Pos[Pelvis] - Pos[f];
+                float len = d.Length();
+                if (len < 4f) continue;
+                Vector2 axis = d / len;
+
+                // How far short of carrying him at standing height this leg is. StandHeight is
+                // measured off the dirt but the ankle rides a boot's worth above it, so the
+                // bone itself is shorter than that by exactly the boot.
+                float squash = LegRest - len;
+
+                // Carrying his share is the standing itself - a man does not wait to sag
+                // before he pushes. The spring on top of it is only the trim, which is why it
+                // is soft now: stiff enough to hold the height, not so stiff that a pixel of
+                // difference between his legs decides which one he is standing on.
+                if (leg == 0) DbgSquashB = squash; else DbgSquashF = squash;
+                float share = leg == 0 ? shareB : shareF;
+                float along = Carry * share + squash * LegSpring;
+                // a leg is a strut, not a rope: it holds him up, it cannot haul him down
+                if (along < 0f) along *= 0.22f;
+                // the knee soaking up the drop
+                along -= Vector2.Dot(Vel(Pelvis) - Vel(f), axis) * LegDamp;
+                along = Math.Clamp(along, -LegMax * 0.35f, LegMax * power);
+
+                Vector2 side = new Vector2(-axis.Y, axis.X);
+                float lean = Pos[Pelvis].X - Pos[f].X;
+                float ankle = -lean * AnkleSpring - Vector2.Dot(Vel(Pelvis), side) * AnkleDamp;
+                float ankleCap = AnkleMax * power;
+                ankle = Math.Clamp(ankle, -ankleCap, ankleCap);
+
+                Push(Pelvis, (axis * along + side * ankle) * m);
+                // the reaction is what presses the boot into the street instead of letting the
+                // push slide him along it
+                Push(f, axis * (-along * 0.10f) * m);
+
+                float load = MathF.Abs(along) / MathF.Max(1f, LegMax);
+                if (leg == 0) LoadB = load; else LoadF = load;
             }
 
             // Trunk: hold the chest over the hips at the angle he is trying for, and his head
@@ -300,9 +423,12 @@ namespace LLD
             // Which way a knee bends is the hinge's business, not a muscle's.
             for (int leg = 0; leg < 2; leg++)
             {
-                if (!Planted(leg)) continue;
                 int k = Knee(leg), f = Foot(leg);
-                Pull(k, (Pos[Pelvis] + Pos[f]) * 0.5f, 0.26f * m, 0.40f * m);
+                // A leg in the air still has a knee in it. Holding the swinging one together,
+                // weakly, is the difference between a leg reaching for the street and a boot
+                // towed through the air on the end of a rope.
+                float kk = Planted(leg) ? 0.26f : 0.12f;
+                Pull(k, (Pos[Pelvis] + Pos[f]) * 0.5f, kk * m, 0.40f * m);
             }
         }
 
@@ -352,6 +478,34 @@ namespace LLD
             float react = Muscle > 0.05f ? 0f : 0.1f;
             Pos[a] -= fix * react;
             Pos[c] -= fix * react;
+        }
+
+        /// <summary>
+        /// A boot on the street stays on the street.
+        ///
+        /// The leg is solved as two rigid bones, and when his weight runs out past his foot the
+        /// solver finds it cheaper to drag the boot up into the air than to haul the rest of
+        /// him back - a boot weighs nothing next to a man. A foot in the air carries nothing,
+        /// so the leg he was standing on quietly stopped being a leg halfway through every
+        /// stumble, which is what left him with nothing under him, bouncing on one boot and
+        /// then going over as though his legs had never been there at all. While there is any
+        /// strength left in him a planted boot is held down onto the dirt. Lift it further
+        /// than this and he really is coming off his feet, and then it is allowed to go.
+        /// </summary>
+        void Plant(float ground)
+        {
+            if (Muscle <= 0.02f) return;
+            for (int leg = 0; leg < 2; leg++)
+            {
+                if (StepLeg == leg) continue;
+                int f = Foot(leg);
+                float floor = ground - Clear[f];
+                float lift = floor - Pos[f].Y;          // above the dirt by this much
+                if (lift <= 0f || lift > Clear[f] * 0.5f) continue;
+                Pos[f].Y = floor;
+                // and it does not keep the upward shove the solver just handed it
+                if (Prev[f].Y < Pos[f].Y) Prev[f].Y = Pos[f].Y;
+            }
         }
 
         void Collide(float ground)

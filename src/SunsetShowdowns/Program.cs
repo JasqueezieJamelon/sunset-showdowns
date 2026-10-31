@@ -38,7 +38,7 @@ namespace LLD
     public class App
     {
         /// Bumped by the last digit on every change. Stays on 0.1.x until told otherwise.
-        public const string Version = "0.1.5";
+        public const string Version = "0.1.6";
 
         Settings S;
         RenderTexture2D _scene;
@@ -1677,7 +1677,13 @@ namespace LLD
             {
                 var img = Raylib.LoadImageFromTexture(_scene.Texture);
                 Raylib.ImageFlipVertical(ref img);
-                Raylib.ImageCrop(ref img, new Rectangle(centre.X - w * 0.5f, centre.Y - h * 0.5f, w, h));
+                // Keep the window on the frame. A crop centred on a body part that has ended
+                // up somewhere unexpected used to take the whole run down with an access
+                // violation inside raylib, which loses every check after it - exactly when a
+                // physics change has gone wrong and the checks are what you need to read.
+                float cx = Math.Clamp(centre.X - w * 0.5f, 0f, MathF.Max(0f, Art.VW - w));
+                float cy = Math.Clamp(centre.Y - h * 0.5f, 0f, MathF.Max(0f, Art.VH - h));
+                Raylib.ImageCrop(ref img, new Rectangle(cx, cy, MathF.Min(w, Art.VW), MathF.Min(h, Art.VH)));
                 Raylib.ImageResizeNN(ref img, (int)(w * 2f), (int)(h * 2f));
                 Raylib.ExportImage(img, Path.Combine(dir, name + ".png"));
                 Raylib.UnloadImage(img);
@@ -2079,6 +2085,85 @@ namespace LLD
                 }
                 Console.WriteLine($"[check] a stagger ends: {fell} went over, {caught} caught it," +
                     $" {bouncing} still hopping" + (bouncing == 0 ? " - ok" : "  FAIL"));
+            }
+
+            // Both legs have to be in it. Standing, the weight is shared between two boots
+            // rather than parked on one; riding out a shove, the leg still on the street has
+            // to be doing real work the whole time instead of the body sagging onto it and
+            // bouncing. The bounce is the thing to catch: hips going up and down on their own.
+            {
+                var q = new Fighter(Roster.All[3], Scene.PlayerStand, 1);
+                for (float t = 0f; t < 2f; t += dt) q.Update(dt, q.Arm.HolsterPoint, Fighter.ArmWeight, true);
+
+                float loB = 0f, loF = 0f; int samples = 0;
+                for (float t = 0f; t < 1.5f; t += dt)
+                {
+                    q.Update(dt, q.Arm.HolsterPoint, Fighter.ArmWeight, true);
+                    loB += q.Doll.LoadB; loF += q.Doll.LoadF; samples++;
+                }
+                loB /= samples; loF /= samples;
+                float share = MathF.Min(loB, loF) / MathF.Max(0.0001f, MathF.Max(loB, loF));
+
+                // now shove him and watch the hips: a man riding it out settles, a pogo stick
+                // keeps reversing. Count the direction changes in the hip height.
+                // Shove him and watch the hips. A pogo stick is not a man who moves a little
+                // while he gathers himself - it is one whose hips swing through a great arc
+                // over and over, so the height he reaches is what to measure, not how often
+                // the sign changes. And by the end of it both boots should be back under him
+                // bearing weight, not one hopping while the other hangs.
+                q.PelvisV = new Vector2(240f, 0f);
+                float lo = 9e9f, hi = -9e9f, bothDown = 0f; int n = 0; float elapsed = 0f;
+                for (float t = 0f; t < 3f; t += dt)
+                {
+                    q.Update(dt, q.Arm.HolsterPoint, Fighter.ArmWeight, true);
+                    elapsed = t;
+                    if (q.Down) break;
+                    float hips = Scene.GroundY - q.PelvisP.Y;
+                    if (t > 0.3f) { lo = MathF.Min(lo, hips); hi = MathF.Max(hi, hips); }
+                    if (t > 2f) { if (q.Doll.LoadB > 0.005f && q.Doll.LoadF > 0.005f) bothDown++; n++; }
+                }
+                float swing = (hi > lo) ? hi - lo : 0f;
+                float settled = n > 0 ? bothDown / n * 100f : 0f;
+                if (Environment.GetEnvironmentVariable("LEGTRACE") == "1")
+                {
+                    var r1 = new Fighter(Roster.All[3], Scene.PlayerStand, 1);
+                    for (float t = 0f; t < 2.5f; t += dt) r1.Update(dt, r1.Arm.HolsterPoint, Fighter.ArmWeight, true);
+                    var dd = r1.Doll;
+                    Console.WriteLine($"[stand] hips={Scene.GroundY - r1.PelvisP.Y:0.0} standH={dd.StandHeight:0.0}" +
+                        $" plant {dd.DbgPlantB}/{dd.DbgPlantF} share {dd.DbgShareB:0.00}/{dd.DbgShareF:0.00}" +
+                        $" squash {dd.DbgSquashB:0.0}/{dd.DbgSquashF:0.0} load {dd.LoadB:0.000}/{dd.LoadF:0.000}" +
+                        $" footYoverGround {Scene.GroundY - dd.Pos[Ragdoll.FootB].Y:0.0}/{Scene.GroundY - dd.Pos[Ragdoll.FootF].Y:0.0}");
+
+                    var r2 = new Fighter(Roster.All[3], Scene.PlayerStand, 1);
+                    for (float t = 0f; t < 2f; t += dt) r2.Update(dt, r2.Arm.HolsterPoint, Fighter.ArmWeight, true);
+                    r2.PelvisV = new Vector2(240f, 0f);
+                    int st0 = r2.Steps;
+                    for (int k = 0; k < 90; k++)
+                    {
+                        for (int j = 0; j < 3; j++) r2.Update(dt, r2.Arm.HolsterPoint, Fighter.ArmWeight, true);
+                        Console.WriteLine($"[trace] t={k * 3 * dt:0.00} hips={Scene.GroundY - r2.PelvisP.Y:000}" +
+                            $" vx={r2.PelvisV.X:+000;-000} loadB={r2.Doll.LoadB:0.00} loadF={r2.Doll.LoadF:0.00}" +
+                            $" air={r2.Doll.StepLeg} steps={r2.Steps - st0} stance={r2.Stance:00} down={r2.Down}");
+                        if (r2.Down) break;
+                    }
+                }
+                // How hard a shove he can ride out on his legs. A healthy man should keep his
+                // feet under a nudge and lose them to a real one; if every shove puts him in
+                // the dirt the legs are not doing anything, whatever else they look like.
+                var rode = new System.Collections.Generic.List<string>();
+                foreach (int push in new[] { 120, 200, 300, 420, 560, 700 })
+                {
+                    var s = new Fighter(Roster.All[3], Scene.PlayerStand, 1);
+                    for (float t = 0f; t < 2f; t += dt) s.Update(dt, s.Arm.HolsterPoint, Fighter.ArmWeight, true);
+                    s.PelvisV = new Vector2(push, 0f);
+                    for (float t = 0f; t < 5f; t += dt) s.Update(dt, s.Arm.HolsterPoint, Fighter.ArmWeight, true);
+                    rode.Add($"{push}:{(s.Down ? "down" : "up")}");
+                }
+                bool ok = share > 0.45f && swing < 32f && settled > 50f;
+                Console.WriteLine($"[check] both legs hold him: standing share {share:0.00}" +
+                    $" (load {loB:0.000}/{loF:0.000}), shoved: hips swung {swing:0}px," +
+                    $" both boots bearing {settled:0}% once gathered, rides out {string.Join(" ", rode)}" +
+                    (ok ? " - ok" : "  FAIL"));
             }
 
             // A man whose legs have given out has to go down. He used to sink until his hips
