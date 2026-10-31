@@ -21,8 +21,13 @@ namespace LLD
         public static float Master = 1f;
         public static float Volume = 1f;
 
+        /// Offscreen runs (--shots, --nettest) open no audio device, so nothing is synthesised
+        /// and nothing is played - the machine stays quiet while frames render.
+        public static bool Silent;
+
         public static void Init()
         {
+            if (Silent) return;
             Add("shot", Gunshot(), 4, 1.0f);
             Add("shot_far", Gunshot(0.65f, 0.75f), 4, 0.85f);
             Add("flesh", Flesh(), 4, 0.9f);
@@ -49,6 +54,7 @@ namespace LLD
 
         public static void Play(string name, float vol = 1f, float pitch = 1f)
         {
+            if (Silent) return;
             if (!Banks.TryGetValue(name, out var b)) return;
             var s = b.Voices[b.Next];
             b.Next = (b.Next + 1) % b.Voices.Length;

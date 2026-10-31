@@ -38,7 +38,7 @@ namespace LLD
     public class App
     {
         /// Bumped by the last digit on every change. Stays on 0.1.x until told otherwise.
-        public const string Version = "0.1.4.5";
+        public const string Version = "0.1.4.6";
 
         Settings S;
         RenderTexture2D _scene;
@@ -114,7 +114,7 @@ namespace LLD
             S.Save();
             Gore.Unload();
             Raylib.UnloadRenderTexture(_scene);
-            Raylib.CloseAudioDevice();
+            if (!Sfx.Silent) Raylib.CloseAudioDevice();
             Raylib.CloseWindow();
         }
 
@@ -126,7 +126,8 @@ namespace LLD
             Raylib.SetConfigFlags(flags);
             Raylib.InitWindow(S.WindowW, S.WindowH, "Sunset Showdowns v" + Version);
             Raylib.SetExitKey(KeyboardKey.Null);
-            Raylib.InitAudioDevice();
+            Sfx.Silent = hidden;
+            if (!hidden) Raylib.InitAudioDevice();
             Raylib.SetTargetFPS(S.VSync ? 0 : 144);
 
             Art.Display = LoadFont("Rye-Regular.ttf", 110);
@@ -1666,7 +1667,7 @@ namespace LLD
             host.Close(); client.Close();
             Gore.Unload();
             Raylib.UnloadRenderTexture(_scene);
-            Raylib.CloseAudioDevice();
+            if (!Sfx.Silent) Raylib.CloseAudioDevice();
             Raylib.CloseWindow();
         }
 
@@ -2159,7 +2160,7 @@ namespace LLD
 
             Gore.Unload();
             Raylib.UnloadRenderTexture(_scene);
-            Raylib.CloseAudioDevice();
+            if (!Sfx.Silent) Raylib.CloseAudioDevice();
             Raylib.CloseWindow();
         }
     }
