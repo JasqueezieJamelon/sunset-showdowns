@@ -1113,22 +1113,33 @@ namespace LLD
             Art.TaperInked(hip, knee, ThighTop * Scale, ThighLow * Scale, pants);
             Art.TaperInked(knee, ankle, CalfTop * Scale, AnkleW * Scale, pants);
 
-            // the boot belongs to the ground, not to the body, so it is drawn in world space
+            // stood up, the boot belongs to the ground: it sits flat however the shin is angled
+            DrawBoot(ankle, new Vector2(0f, 1f), new Vector2(Face, 0f), boot);
+        }
+
+        /// <summary>
+        /// One boot, built along whatever direction the leg is pointing. <paramref name="down"/>
+        /// runs from the ankle towards the sole and <paramref name="fwd"/> towards the toe, so
+        /// a man stood up gets a boot flat on the street and a man face down in it gets the
+        /// same boot lying the way his leg fell. He wore boots alive; he keeps them.
+        /// </summary>
+        void DrawBoot(Vector2 ankle, Vector2 down, Vector2 fwd, Color boot)
+        {
             float s = Scale;
-            Vector2 B(float dx, float dy) => ankle + new Vector2(dx * Face * s, dy * s);
+            Vector2 B(float dx, float dy) => ankle + fwd * (dx * s) + down * (dy * s);
             Art.Shape(new[]
             {
                 B(-16f, -6f), B(14f, -6f), B(16f, 24f),
                 B(34f, 28f), B(34f, 38f), B(-18f, 38f), B(-17f, 22f)
             }, boot);
-            Art.Seam(B(-16f, 6f), B(14f, 6f), 3f * Scale, Art.Shade(boot, 0.78f));
+            Art.Seam(B(-16f, 6f), B(14f, 6f), 3f * s, Art.Shade(boot, 0.78f));
 
             switch (Def.BootStyle)
             {
                 case 1:     // a cuff turned down over the top
                     Art.Shape(new[] { B(-20f, -22f), B(18f, -22f), B(19f, -2f), B(-21f, -2f) },
                         Art.Shade(boot, 1.18f), 2.5f);
-                    Art.Seam(B(-19f, -12f), B(17f, -12f), 2.5f * Scale, Art.Shade(boot, 0.9f));
+                    Art.Seam(B(-19f, -12f), B(17f, -12f), 2.5f * s, Art.Shade(boot, 0.9f));
                     break;
                 case 2:     // a spur off the heel
                     Art.CapsuleInked(B(-18f, 30f), B(-30f, 30f), 2.5f * s, P.Metal, 2f);
@@ -1136,6 +1147,15 @@ namespace LLD
                     if (!Art.InkPass) Raylib.DrawCircleV(B(-34f, 30f), 2.2f * s, Art.Shade(P.Metal, 0.6f));
                     break;
             }
+        }
+
+        /// <summary>A fallen boot, laid along the shin that is wearing it.</summary>
+        void DrawFallenBoot(Vector2 knee, Vector2 foot, Color boot)
+        {
+            Vector2 down = foot - knee;
+            float len = down.Length();
+            down = len > 0.001f ? down / len : new Vector2(0f, 1f);
+            DrawBoot(foot, down, new Vector2(down.Y, -down.X) * Face, boot);
         }
 
         void DrawBackArm(Func<float, float, Vector2> Lp)
@@ -1239,7 +1259,7 @@ namespace LLD
 
             Art.TaperInked(pelvis, d.Pos[Ragdoll.KneeB], ThighTop * Scale, ThighLow * Scale, P.PantsDark);
             Art.TaperInked(d.Pos[Ragdoll.KneeB], d.Pos[Ragdoll.FootB], CalfTop * Scale, AnkleW * Scale, P.PantsDark);
-            Art.CircleInked(d.Pos[Ragdoll.FootB], 17f * Scale, Art.Shade(P.Boots, 0.82f), 3f);
+            DrawFallenBoot(d.Pos[Ragdoll.KneeB], d.Pos[Ragdoll.FootB], Art.Shade(P.Boots, 0.82f));
 
             Vector2 axis = chest - pelvis;
             if (axis.LengthSquared() < 1f) axis = new Vector2(0f, -1f);
@@ -1251,7 +1271,7 @@ namespace LLD
 
             Art.TaperInked(pelvis, d.Pos[Ragdoll.KneeF], ThighTop * Scale, ThighLow * Scale, P.Pants);
             Art.TaperInked(d.Pos[Ragdoll.KneeF], d.Pos[Ragdoll.FootF], CalfTop * Scale, AnkleW * Scale, P.Pants);
-            Art.CircleInked(d.Pos[Ragdoll.FootF], 17f * Scale, P.Boots, 3f);
+            DrawFallenBoot(d.Pos[Ragdoll.KneeF], d.Pos[Ragdoll.FootF], P.Boots);
 
             Vector2 hUp = d.HeadUp;
             Vector2 hFwd = new Vector2(-hUp.Y, hUp.X) * Face;

@@ -8,7 +8,7 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <AssemblyName>SunsetShowdowns</AssemblyName>
     <RootNamespace>LLD</RootNamespace>
-    <Version>0.1.4.9</Version>
+    <Version>0.1.5.0</Version>
     <!--
       Windows shows this in the SmartScreen "More info" panel and in the file's Properties. A
       blank publisher there reads as nothing at all; a filled-in one at least names the thing.
@@ -20,8 +20,8 @@
     <Authors>Jasqueezie Jamelon</Authors>
     <Description>A 2D quick-draw duelling game.</Description>
     <Copyright>Copyright (c) 2026 Jasqueezie Jamelon</Copyright>
-    <FileVersion>0.1.4.9</FileVersion>
-    <AssemblyVersion>0.1.4.9</AssemblyVersion>
+    <FileVersion>0.1.5.0</FileVersion>
+    <AssemblyVersion>0.1.5.0</AssemblyVersion>
     <InvariantGlobalization>true</InvariantGlobalization>
     <!-- symbols live inside the exe, so a crash still reports line numbers from one file -->
     <DebugType>embedded</DebugType>
