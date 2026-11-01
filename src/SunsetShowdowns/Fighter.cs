@@ -533,9 +533,25 @@ namespace LLD
                     HeadWoundAngle = MathF.Atan2(-(lExit.Y - -400f), lExit.X - 6f);
                 }
                 KnockHat(worldDir);
-                Gore.Chunks(worldExit, worldDir, P.Skin, (int)(5 + 7 * (rep.HeadSeverity - 1)));
-                // the piece of skull that came away with it
-                Gore.SkullPieces(worldExit, worldDir, P.Skin, rep.HeadSeverity >= 2 ? 3 : 1);
+
+                if (rep.HeadSeverity >= 2)
+                {
+                    // A skull coming apart, thrown from where the parts of a head actually
+                    // are rather than all out of the one hole: the brain out of the brain,
+                    // which Anatomy puts at (8, -404) with a radius of 21, and the bone off
+                    // the vault of the skull around (4, -398). Both are read from the same
+                    // numbers the bullet was traced against, so what you see leave him is
+                    // what the shot said it hit.
+                    Gore.HeadBurst(L2W(new Vector2(4f, -398f)), 34f * Scale,
+                                   L2W(new Vector2(8f, -404f)), worldDir, P.Skin);
+                }
+                else
+                {
+                    Gore.Chunks(worldExit, worldDir, P.Skin, 5);
+                    Gore.SkullPieces(worldExit, worldDir, P.Skin, 1);
+                    // a graze opens the vault without emptying it: a little of him comes out
+                    if (Rng.Chance(0.5f)) Gore.BrainMatter(L2W(new Vector2(8f, -404f)), worldDir, 2, 0.5f);
+                }
                 // and the parts of him that came loose without coming off
                 TearFace(HeadWoundAngle, rep.HeadSeverity, worldDir, worldExit);
                 if (rep.JawGone) { JawGone = true; if (rep.HeadSeverity < 2) HangJaw(); }
@@ -1340,7 +1356,10 @@ namespace LLD
 
             int n = _skullJitter.Length;
             var outline = new Vector2[n];
-            float arc = HeadDamage >= 2 ? 2.1f : 1.25f;
+            // An emptied skull has a lot more of it missing than a grazed one: the bite
+            // out of the silhouette runs most of the way round the wound side, and takes
+            // most of the way in to the middle where it is deepest.
+            float arc = HeadDamage >= 2 ? 2.9f : 1.25f;
             for (int i = 0; i < n; i++)
             {
                 float a = i / (float)n * MathF.PI * 2f;
@@ -1351,7 +1370,7 @@ namespace LLD
                     if (diff < arc * 0.5f)
                     {
                         float bite = 1f - MathF.Cos(diff / (arc * 0.5f) * MathF.PI * 0.5f);
-                        rr = r * Art.Lerp(0.28f, 1f, bite) * _skullJitter[i];
+                        rr = r * Art.Lerp(HeadDamage >= 2 ? 0.08f : 0.28f, 1f, bite) * _skullJitter[i];
                     }
                 }
                 outline[i] = c + Dir(a) * rr;
@@ -1432,7 +1451,7 @@ namespace LLD
                     }
                     // the hole, wherever it landed - cheek, brow or the side of the crown
                     Vector2 wAt = c + Dir(HeadWoundAngle) * r * 0.5f;
-                    float wRad = r * (HeadDamage >= 2 ? 0.62f : 0.34f);
+                    float wRad = r * (HeadDamage >= 2 ? 0.78f : 0.34f);
                     SkullWound(wAt, wRad);
                     // what runs out of it starts at the underside of the hole, not the middle,
                     // or the drip is drawn straight over the skull
@@ -1505,10 +1524,30 @@ namespace LLD
                 Raylib.DrawLineEx(mid, at + d * rad * 0.76f, w * 0.8f, crack);
             }
 
-            // the cavity, off to one side of the crater so the whole thing does not read as an eye
+            // The cavity, off to one side of the crater so the whole thing does not read as
+            // an eye. A hole in the side of a head is a hole; a hole in the TOP of an emptied
+            // one is looking down into the cranium, and what is in a cranium is not a black
+            // pit, it is brain - pale, pink, and shining wet where the light catches it.
             Vector2 cav = at + Art.FromAngle(_skullJitter[2] * MathF.PI * 2f) * rad * 0.3f;
-            Blob(cav, rad * 0.38f, new Color(92, 12, 16, 255), 11);
-            Blob(cav, rad * 0.23f, new Color(32, 5, 9, 255), 17);
+            if (HeadDamage >= 2)
+            {
+                Blob(cav, rad * 0.52f, new Color(104, 30, 34, 255), 11);
+                Blob(cav, rad * 0.44f, Gore.BrainDeep, 3);
+                Blob(cav, rad * 0.34f, Gore.BrainMid, 9);
+                Blob(cav, rad * 0.20f, Gore.BrainPale, 14);
+                // the folds of it, which is what stops it reading as a pink coin
+                for (int i = 0; i < 4; i++)
+                {
+                    float a = _skullJitter[(i * 5) % n] * MathF.PI * 2f;
+                    Vector2 o = cav + Art.FromAngle(a) * rad * 0.2f;
+                    Art.Capsule(o, o + Art.FromAngle(a + 1.9f) * rad * 0.2f, rad * 0.06f, Gore.BrainDeep);
+                }
+            }
+            else
+            {
+                Blob(cav, rad * 0.38f, new Color(92, 12, 16, 255), 11);
+                Blob(cav, rad * 0.23f, new Color(32, 5, 9, 255), 17);
+            }
         }
 
         /// <summary>A circle knocked out of true, so torn flesh and bone never read as geometry.</summary>

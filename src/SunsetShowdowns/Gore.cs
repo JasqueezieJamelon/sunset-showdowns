@@ -5,7 +5,7 @@ using Raylib_cs;
 
 namespace LLD
 {
-    public enum PKind { Blood, Mist, Gib, Dust, Smoke, Casing, Hat, Gun, Bone, Glass }
+    public enum PKind { Blood, Mist, Gib, Dust, Smoke, Casing, Hat, Gun, Bone, Glass, Brain }
 
     public class Particle
     {
@@ -97,7 +97,66 @@ namespace LLD
         static Color Blood(float v = 1f) => new Color((int)(128 * v), (int)(14 * v), (int)(18 * v), 255);
         static Color BloodDark => new Color(72, 8, 12, 255);
 
+        // What is inside a head, and it is not the colour of what is inside a chest. Brain is
+        // pale and pink and slightly grey - nearer raw sausage meat than blood - and the blood
+        // that comes with it only darkens it in patches. Thrown in plain red it read as more
+        // of the same mess coming out of a hole, which is exactly what it should not read as:
+        // the whole point of a head coming apart is that something different comes out.
+        public static readonly Color BrainPale = new Color(222, 176, 172, 255);
+        public static readonly Color BrainMid = new Color(196, 138, 134, 255);
+        public static readonly Color BrainDeep = new Color(158, 90, 92, 255);
+        /// the thin wash that soaks in under a piece of it
+        static readonly Color BrainWet = new Color(176, 104, 104, 255);
+        /// the aerosol off a skull coming apart: pink, because it is mostly not blood
+        static readonly Color BrainMist = new Color(224, 164, 166, 255);
+        /// bone, seen from the outside and from the broken edge
+        public static readonly Color SkullBone = new Color(232, 222, 196, 255);
+        static readonly Color SkullInner = new Color(198, 150, 140, 255);
+
+        static Color BrainTone() =>
+            Rng.Chance(0.18f) ? BrainDeep :
+            Rng.Chance(0.45f) ? BrainMid : BrainPale;
+
         static void Add(Particle p) { if (Parts.Count < 1400) Parts.Add(p); }
+
+        /// <summary>
+        /// Dev only. Called the instant after a burst, before anything has had time to move,
+        /// this reports where each sort of thing STARTED - which is the only way to tell
+        /// whether the brain came out of the brain or out of a convenient average point.
+        /// </summary>
+        public static void Audit(Vector2 brainAt, Vector2 skullAt, float skullR,
+                                 out int brainN, out int boneN, out float brainFar, out float boneNearRim)
+        {
+            brainN = boneN = 0;
+            brainFar = 0f;
+            boneNearRim = 0f;
+            foreach (var p in Parts)
+            {
+                if (p.Kind == PKind.Brain)
+                {
+                    brainN++;
+                    brainFar = MathF.Max(brainFar, Vector2.Distance(p.Pos, brainAt));
+                }
+                else if (p.Kind == PKind.Bone)
+                {
+                    boneN++;
+                    // how far off the dome it started, as a fraction of the dome
+                    boneNearRim = MathF.Max(boneNearRim,
+                        MathF.Abs(Vector2.Distance(p.Pos, skullAt) - skullR * 0.875f) / skullR);
+                }
+            }
+        }
+
+        /// <summary>Dev only: is this the colour of brain rather than the colour of blood?</summary>
+        public static bool LooksLikeBrain(Color c)
+            => c.R > 150 && c.R > c.G + 25 && MathF.Abs(c.G - c.B) < 22 && c.G > 80;
+
+        public static bool AllBrainPink()
+        {
+            foreach (var p in Parts)
+                if (p.Kind == PKind.Brain && !LooksLikeBrain(p.Col)) return false;
+            return true;
+        }
 
         static float GoreScale => Level switch { GoreLevel.Off => 0f, GoreLevel.Light => 0.45f, _ => 1f };
 
@@ -345,25 +404,132 @@ namespace LLD
                 });
         }
 
-        public static void HeadBurst(Vector2 p, Vector2 dir, Color skin)
+        /// <summary>
+        /// What comes out of a brain. Soft, lobed, wet lumps - not the jagged shards a bone
+        /// breaks into - and pale pink rather than red.
+        /// </summary>
+        public static void BrainMatter(Vector2 at, Vector2 dir, int count, float power = 1f)
         {
             if (Level == GoreLevel.Off) return;
-            int n = (int)(40 * GoreScale);
+            count = Math.Max(1, (int)(count * GoreScale));
+            for (int i = 0; i < count; i++)
+            {
+                int sides = Rng.I(7, 11);
+                var shape = new Vector2[sides];
+                float baseR = Rng.F(6f, 15f);
+                // lobed, not spiked: every corner stays near the radius, so it comes out
+                // looking like something soft torn apart rather than something shattered
+                for (int k = 0; k < sides; k++)
+                {
+                    float a = k / (float)sides * MathF.PI * 2f;
+                    float rr = baseR * Rng.F(0.82f, 1.18f);
+                    shape[k] = new Vector2(MathF.Cos(a) * rr, MathF.Sin(a) * rr);
+                }
+                Add(new Particle
+                {
+                    Kind = PKind.Brain,
+                    Pos = at + Rng.Dir() * Rng.F(0f, 9f),
+                    Vel = dir * Rng.F(120f, 540f) * power + Rng.Dir() * Rng.F(70f, 330f) * power
+                          + new Vector2(0f, -220f * power),
+                    Rad = baseR,
+                    MaxLife = 16f, Life = 16f,
+                    Rot = Rng.F(0f, 6.28f),
+                    RotVel = Rng.F(-8f, 8f),
+                    Col = BrainTone(),
+                    Shape = shape,
+                    Bounce = 0.08f,     // it does not bounce. It lands and it stays landed.
+                    Drag = 0.5f,
+                });
+            }
+        }
+
+        /// <summary>
+        /// A skull coming apart. The pieces do not come from one point - they come off the
+        /// vault, each one from its own place on the dome, flying outward from the middle of
+        /// the head as well as along the bullet. Ivory on the outside, pink on the break.
+        /// </summary>
+        public static void SkullBurst(Vector2 centre, float radius, Vector2 dir, int count)
+        {
+            if (Level == GoreLevel.Off) return;
+            count = Math.Max(2, (int)(count * GoreScale));
+            for (int i = 0; i < count; i++)
+            {
+                // somewhere on the upper dome, biased the way the bullet went
+                float a = Rng.F(0f, MathF.PI) * (Rng.Chance(0.5f) ? 1f : -1f);
+                Vector2 outward = new Vector2(MathF.Cos(a), -MathF.Abs(MathF.Sin(a)) * Rng.F(0.5f, 1.3f));
+                outward = Vector2.Normalize(outward + dir * 0.7f);
+                Vector2 from = centre + outward * radius * Rng.F(0.75f, 1.0f);
+
+                int sides = Rng.I(3, 6);
+                var shape = new Vector2[sides];
+                float baseR = Rng.F(7f, 16f);
+                for (int k = 0; k < sides; k++)
+                {
+                    float t = k / (float)sides * MathF.PI * 2f;
+                    float rr = baseR * Rng.F(0.5f, 1.3f);     // plates of bone break jagged
+                    shape[k] = new Vector2(MathF.Cos(t) * rr, MathF.Sin(t) * rr * 0.55f);
+                }
+                Add(new Particle
+                {
+                    Kind = PKind.Bone,
+                    Pos = from,
+                    Vel = outward * Rng.F(220f, 700f) + dir * Rng.F(60f, 260f) + new Vector2(0f, -260f),
+                    Rad = baseR,
+                    MaxLife = 20f, Life = 20f,
+                    Rot = Rng.F(0f, 6.28f),
+                    RotVel = Rng.F(-13f, 13f),
+                    Col = Rng.Chance(0.3f) ? SkullInner : SkullBone,
+                    Shape = shape,
+                    Bounce = 0.26f,
+                });
+            }
+        }
+
+        /// <summary>
+        /// A head coming apart, built out of what is actually in one and thrown from where
+        /// that thing actually sits: the brain out of the brain, the bone off the vault, the
+        /// blood out of everything, and a pink cloud over the lot of it.
+        /// </summary>
+        public static void HeadBurst(Vector2 skull, float radius, Vector2 brain, Vector2 dir, Color skin)
+        {
+            if (Level == GoreLevel.Off) return;
+
+            // the aerosol, which is pink and not red, and which is the first thing you see
+            int m = (int)(16 * GoreScale);
+            for (int i = 0; i < m; i++)
+                Add(new Particle
+                {
+                    Kind = PKind.Mist,
+                    Pos = brain + Rng.Dir() * Rng.F(0f, 14f),
+                    Vel = dir * Rng.F(120f, 460f) + Rng.Dir() * Rng.F(60f, 260f),
+                    Rad = Rng.F(6f, 13f),
+                    MaxLife = 0.5f, Life = 0.5f,
+                    Col = Rng.Chance(0.3f) ? Blood(1f) : BrainMist,
+                    Drag = 1.6f,
+                });
+
+            // blood, from the whole head rather than from one spot
+            int n = (int)(34 * GoreScale);
             for (int i = 0; i < n; i++)
                 Add(new Particle
                 {
                     Kind = PKind.Blood,
-                    Pos = p,
+                    Pos = skull + Rng.Dir() * Rng.F(0f, radius),
                     Vel = dir * Rng.F(200f, 760f) + Rng.Dir() * Rng.F(80f, 420f) + new Vector2(0f, -180f),
                     Rad = Rng.F(2.5f, 7.5f),
                     MaxLife = 2.6f, Life = 2.6f,
                     Col = Rng.Chance(0.35f) ? BloodDark : Blood(Rng.F(0.85f, 1.1f)),
                 });
-            int g = (int)(12 * GoreScale);
-            for (int i = 0; i < g; i++) Gib(p, dir, true);
+
+            BrainMatter(brain, dir, 11);
+            SkullBurst(skull, radius, dir, 9);
+            FaceSkin(skull + dir * radius * 0.4f, dir, skin, 3);
+            // meat only: every piece of bone in a burst skull comes off the dome, where
+            // bone is, and not out of the middle of his head where bone is not
+            for (int i = 0; i < (int)(5 * GoreScale); i++) Gib(skull, dir, true, false);
         }
 
-        static void Gib(Vector2 p, Vector2 dir, bool big)
+        static void Gib(Vector2 p, Vector2 dir, bool big, bool allowBone = true)
         {
             int sides = Rng.I(5, 8);
             var shape = new Vector2[sides];
@@ -374,7 +540,7 @@ namespace LLD
                 float r = baseR * Rng.F(0.6f, 1.25f);
                 shape[i] = new Vector2(MathF.Cos(a) * r, MathF.Sin(a) * r);
             }
-            bool bone = Rng.Chance(0.14f);
+            bool bone = allowBone && Rng.Chance(0.14f);
             Add(new Particle
             {
                 Kind = bone ? PKind.Bone : PKind.Gib,
@@ -527,6 +693,9 @@ namespace LLD
                     p.RotVel *= 0.5f;
                     if (p.Kind == PKind.Gib || p.Kind == PKind.Bone)
                         Stamp(p.Pos, p.Rad * 1.6f, Art.Alpha(Blood(0.8f), 0.8f));
+                    // brain leaves a pink stain, not a red one, and a wider one: it spreads
+                    else if (p.Kind == PKind.Brain)
+                        Stamp(p.Pos, p.Rad * 2.1f, Art.Alpha(BrainWet, 0.7f));
                     if (MathF.Abs(p.Vel.Y) < 40f) { p.Rest = true; p.Vel = Vector2.Zero; }
                 }
 
@@ -563,10 +732,13 @@ namespace LLD
                     case PKind.Gib:
                     case PKind.Bone:
                     case PKind.Glass:
+                    case PKind.Brain:
                         {
                             var pts = new Vector2[p.Shape.Length];
                             bool glass = p.Kind == PKind.Glass;
-                            float squash = p.Rest && !glass ? 0.4f : 1f;   // meat flattens, glass does not
+                            bool brain = p.Kind == PKind.Brain;
+                            // brain squashes more than meat does: it has no structure to it
+                            float squash = p.Rest && !glass ? (brain ? 0.3f : 0.4f) : 1f;
                             for (int i = 0; i < pts.Length; i++)
                             {
                                 var v = Art.Rot(p.Shape[i], p.Rot);
@@ -574,9 +746,19 @@ namespace LLD
                             }
                             if (p.Rest && !glass)
                             {
-                                // settled meat reads as a wet smear, not a paper cut-out
-                                Raylib.DrawCircleV(p.Pos, p.Rad * 1.5f, Art.Alpha(Blood(0.55f), 0.5f));
+                                // settled meat reads as a wet smear, not a paper cut-out, and
+                                // what soaks out from under a piece of brain is pink
+                                Raylib.DrawCircleV(p.Pos, p.Rad * (brain ? 1.9f : 1.5f),
+                                    Art.Alpha(brain ? BrainWet : Blood(0.55f), brain ? 0.42f : 0.5f));
                                 Art.Poly(pts, p.Col);
+                            }
+                            else if (brain)
+                            {
+                                // in the air it is soft and shining: no hard ink line round it,
+                                // a pale highlight on the upper side of the lump
+                                Art.Poly(pts, p.Col);
+                                Raylib.DrawCircleV(p.Pos - new Vector2(0f, p.Rad * 0.3f),
+                                    p.Rad * 0.34f, Art.Alpha(BrainPale, 0.55f));
                             }
                             else Art.Shape(pts, p.Col, 1.2f);
                             break;

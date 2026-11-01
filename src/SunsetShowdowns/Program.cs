@@ -2517,6 +2517,70 @@ namespace LLD
                                   $"enemyDown={_duel.Enemy.Down} enemyDead={_duel.Enemy.Dead} blood={_duel.Enemy.Blood:0}");
             }
 
+            // What leaves a head has to leave from where that thing is IN a head. The brain
+            // is at (8, -404) with a radius of 21 and the vault of the skull is a dome of 34
+            // about (4, -398) - the same numbers the bullet is traced against - so the brain
+            // must come out of the brain and the bone must come off the dome, not all of it
+            // out of one convenient point in the middle.
+            {
+                Gore.Reset();
+                var f = new Fighter(Roster.All[3], new Vector2(900f, Scene.GroundY), -1);
+                for (int i = 0; i < 40; i++) f.Update(dt, f.Arm.HolsterPoint, Fighter.ArmWeight, true);
+                Vector2 skull = f.L2W(new Vector2(4f, -398f));
+                Vector2 brain = f.L2W(new Vector2(8f, -404f));
+                float r = 34f * f.Scale;
+                Gore.HeadBurst(skull, r, brain, Vector2.Normalize(new Vector2(-1f, -0.2f)), f.P.Skin);
+                Gore.Audit(brain, skull, r, out int brainN, out int boneN, out float brainFar, out float boneOff);
+                bool pink = Gore.AllBrainPink();
+                // a lump of brain starts inside the brain; a plate of bone starts on the dome
+                bool ok = brainN >= 8 && boneN >= 8 && brainFar <= 21f * f.Scale && boneOff < 0.22f && pink;
+                Console.WriteLine($"[check] brain out of the brain: {brainN} lumps, none further than" +
+                    $" {brainFar:0}px from the middle of it (the brain is {21f * f.Scale:0}px across the radius)," +
+                    $" {boneN} plates of bone off the dome within {boneOff * 100f:0}% of it," +
+                    $" every lump pink={pink}" + (ok ? " - ok" : "  FAIL"));
+                Gore.Reset();
+            }
+
+            // A SKULL COMING APART, four frames of it, close enough to see what is what.
+            // Nothing here is in a duel: it is the burst on its own against a flat ground so
+            // the colours can be checked against each other - bone ivory, brain pale pink,
+            // blood dark red - and so it is obvious whether a thing left from where that
+            // thing actually lives in a head.
+            {
+                Gore.Reset();
+                var f = new Fighter(Roster.All[3], new Vector2(430f, Scene.GroundY), -1);
+                for (int i = 0; i < 40; i++) f.Update(dt, f.Arm.HolsterPoint, Fighter.ArmWeight, true);
+                Vector2 skull = f.L2W(new Vector2(4f, -398f));
+                Vector2 brain = f.L2W(new Vector2(8f, -404f));
+                Vector2 shot = Vector2.Normalize(new Vector2(-1f, -0.22f));
+                Gore.HeadBurst(skull, 34f * f.Scale, brain, shot, f.P.Skin);
+                f.HeadDamage = 2;
+                f.HeadWoundAngle = 0.4f;
+                f.Collapse(shot, 1.4f);
+
+                float[] at = { 0.05f, 0.22f, 0.6f, 2.4f };
+                float now = 0f;
+                Raylib.BeginTextureMode(_scene);
+                Raylib.ClearBackground(new Color(214, 206, 196, 255));
+                for (int k = 0; k < at.Length; k++)
+                {
+                    while (now < at[k]) { Gore.Update(dt); f.Update(dt, f.Arm.HolsterPoint, Fighter.ArmWeight, false); now += dt; }
+                    // each frame is drawn shifted along, so four moments sit in a row
+                    var cam = new Camera2D { Zoom = 1f, Offset = new Vector2(k * 430f - 170f, 0f), Target = Vector2.Zero };
+                    Raylib.BeginMode2D(cam);
+                    f.Draw(false);
+                    Gore.Draw();
+                    Raylib.EndMode2D();
+                }
+                Raylib.EndTextureMode();
+                var bi = Raylib.LoadImageFromTexture(_scene.Texture);
+                Raylib.ImageFlipVertical(ref bi);
+                Raylib.ImageCrop(ref bi, new Rectangle(60f, 330f, 1800f, 560f));
+                Raylib.ExportImage(bi, Path.Combine(dir, "07d-burst.png"));
+                Raylib.UnloadImage(bi);
+                Gore.Reset();
+            }
+
             // The preacher never says READY. He talks through the stand-off in the same place
             // the word would have been, and the word arrives somewhere inside the talking -
             // a different somewhere every time, or there would be something to learn.
