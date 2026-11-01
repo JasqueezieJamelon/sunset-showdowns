@@ -43,7 +43,8 @@ namespace LLD
         public float DirX, DirY;
         public float Shock, Bleed, Gore;
         public bool Instant, Cripple, Disarm, Through;
-        public byte Head;               // bit 0-1 severity, bit 2 eye out, bit 3 jaw gone
+        public byte Head;               // bit 0-1 severity, bit 2 eye out, bit 3 jaw gone,
+                                        // bits 4-7 how far the vault came open, in sixteenths
         public string Note;             // "through the heart"
     }
 

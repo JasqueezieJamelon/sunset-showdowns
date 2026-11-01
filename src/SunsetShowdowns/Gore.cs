@@ -522,12 +522,19 @@ namespace LLD
         /// that thing actually sits: the brain out of the brain, the bone off the vault, the
         /// blood out of everything, and a pink cloud over the lot of it.
         /// </summary>
-        public static void HeadBurst(Vector2 skull, float radius, Vector2 brain, Vector2 dir, Color skin)
+        /// <param name="open">
+        /// How far the vault came open: 0 is a bullet through with a hole either side, 1 is
+        /// a head emptied. It decides how much of what comes out, and whether any brain
+        /// comes out at all - at the low end you get a little bone and a lot of blood and
+        /// nothing else, which is most of what makes one head shot look unlike the last.
+        /// </param>
+        public static void HeadBurst(Vector2 skull, float radius, Vector2 brain, Vector2 dir, Color skin, float open = 1f)
         {
             if (Level == GoreLevel.Off) return;
+            open = Math.Clamp(open, 0f, 1f);
 
             // the aerosol, which is pink and not red, and which is the first thing you see
-            int m = (int)(16 * GoreScale);
+            int m = (int)((5f + 13f * open) * GoreScale);
             for (int i = 0; i < m; i++)
                 Add(new Particle
                 {
@@ -540,8 +547,9 @@ namespace LLD
                     Drag = 1.6f,
                 });
 
-            // blood, from the whole head rather than from one spot
-            int n = (int)(34 * GoreScale);
+            // blood, from the whole head rather than from one spot. Blood is the one thing
+            // a head always gives you, however little else it gives.
+            int n = (int)((20f + 22f * open) * GoreScale);
             for (int i = 0; i < n; i++)
                 Add(new Particle
                 {
@@ -553,12 +561,29 @@ namespace LLD
                     Col = Rng.Chance(0.35f) ? BloodDark : Blood(Rng.F(0.85f, 1.1f)),
                 });
 
-            BrainMatter(brain, dir, 11);
-            SkullBurst(skull, radius, dir, 6);
-            FaceSkin(skull + dir * radius * 0.4f, dir, skin, 2);
+            // What else comes out, and how much, is rolled around that number rather than
+            // being the same handful every time. Two shots that open a skull the same
+            // amount still do not throw the same thing out of it.
+            //
+            // Bone comes off first: even a hole through a head takes a chip or two with it.
+            int boneN = Rng.I(1, 3) + (int)Rng.F(open * 2f, open * 9f);
+            SkullBurst(skull, radius, dir, boneN);
+
+            // Brain needs the vault genuinely off before any of it is going anywhere. Below
+            // that it is a hole in a head, and a hole in a head is bone and blood.
+            if (open > 0.34f || Rng.Chance(0.18f))
+            {
+                int brainN = (int)Rng.F(2f + open * 4f, 3f + open * 16f);
+                BrainMatter(brain, dir, brainN, 0.6f + open * 0.6f);
+            }
+
+            // and a sheet of his face only when there is enough gone to take one
+            if (open > 0.55f && Rng.Chance(0.5f + open * 0.4f))
+                FaceSkin(skull + dir * radius * 0.4f, dir, skin, Rng.I(1, 3));
+
             // meat only: every piece of bone in a burst skull comes off the dome, where
             // bone is, and not out of the middle of his head where bone is not
-            for (int i = 0; i < (int)(2 * GoreScale); i++) Gib(skull, dir, true, false);
+            for (int i = 0; i < (int)((1f + open * 2f) * GoreScale); i++) Gib(skull, dir, true, false);
         }
 
         static void Gib(Vector2 p, Vector2 dir, bool big, bool allowBone = true)

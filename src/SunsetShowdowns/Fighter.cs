@@ -56,6 +56,7 @@ namespace LLD
 
         public int HeadDamage;          // 0 whole, 1 torn open, 2 skull emptied
         public float HeadWoundAngle;    // body-space angle of the missing piece
+        public float HeadOpen;          // 0 a neat hole through, 1 the vault emptied
         public bool JawGone;            // lower face torn away
         public bool EyeOut;             // eyeball hanging out of the socket
         Vector2 _eyePos, _eyePrev;      // the eye is its own little pendulum
@@ -504,6 +505,26 @@ namespace LLD
                 float angle = MathF.Atan2(-(lExit.Y - -400f), lExit.X - 6f);
                 bool frontOfFace = MathF.Abs(Art.WrapPi(angle)) < 1.3f;
                 rep.EyeOut = frontOfFace && !EyeOut && Rng.Chance(rep.HeadSeverity >= 2 ? 0.85f : 0.55f);
+
+                // HOW BADLY IT OPENS, which is not the same question as whether it killed him.
+                //
+                // Every killing head shot used to do the identical thing - same size hole in
+                // the same shape with the same shower out of it - so the tenth one looked
+                // exactly like the first. A bullet into a skull does not do one thing. It
+                // can pass through and leave a neat hole either side, it can lift the vault
+                // off and take very little else, it can take the vault and empty what is
+                // under it, or it can take the lot. Which of those happens is rolled here,
+                // once, with the rest of the shot, so both machines open the same skull.
+                if (rep.HeadSeverity >= 2)
+                {
+                    float roll = Rng.F(0f, 1f);
+                    rep.HeadOpen =
+                        roll < 0.22f ? Rng.F(0.06f, 0.26f) :   // straight through: a hole
+                        roll < 0.54f ? Rng.F(0.28f, 0.52f) :   // the vault lifts, little else
+                        roll < 0.86f ? Rng.F(0.54f, 0.78f) :   // bone and what is under it
+                                       Rng.F(0.80f, 1.00f);    // the lot
+                }
+                else rep.HeadOpen = Rng.F(0.04f, 0.24f);
             }
 
             // whether the gun actually leaves his hand is decided once, here
@@ -527,10 +548,16 @@ namespace LLD
 
             if (rep.HeadSeverity > 0)
             {
-                if (rep.HeadSeverity > HeadDamage)
+                if (rep.HeadSeverity > HeadDamage || rep.HeadOpen > HeadOpen)
                 {
-                    HeadDamage = rep.HeadSeverity;
+                    HeadDamage = Math.Max(HeadDamage, rep.HeadSeverity);
+                    HeadOpen = MathF.Max(HeadOpen, rep.HeadOpen);
                     HeadWoundAngle = MathF.Atan2(-(lExit.Y - -400f), lExit.X - 6f);
+                    // The shape of the hole is rolled fresh for every wound instead of once
+                    // per man at birth, which is what made it the same hole every time. The
+                    // seed comes out of where the bullet left him and how far it opened, so
+                    // it is different every shot and identical on both machines.
+                    ReshapeSkull(lExit, rep.HeadOpen);
                 }
                 KnockHat(worldDir);
 
@@ -543,7 +570,7 @@ namespace LLD
                     // numbers the bullet was traced against, so what you see leave him is
                     // what the shot said it hit.
                     Gore.HeadBurst(L2W(new Vector2(4f, -398f)), 34f * Scale,
-                                   L2W(new Vector2(8f, -404f)), worldDir, P.Skin);
+                                   L2W(new Vector2(8f, -404f)), worldDir, P.Skin, HeadOpen);
                 }
                 else
                 {
@@ -1359,7 +1386,8 @@ namespace LLD
             // An emptied skull has a lot more of it missing than a grazed one: the bite
             // out of the silhouette runs most of the way round the wound side, and takes
             // most of the way in to the middle where it is deepest.
-            float arc = HeadDamage >= 2 ? 2.9f : 1.25f;
+            // how wide the bite is, and how deep: both follow how far it actually opened
+            float arc = Art.Lerp(0.95f, 3.0f, HeadOpen);
             for (int i = 0; i < n; i++)
             {
                 float a = i / (float)n * MathF.PI * 2f;
@@ -1370,7 +1398,7 @@ namespace LLD
                     if (diff < arc * 0.5f)
                     {
                         float bite = 1f - MathF.Cos(diff / (arc * 0.5f) * MathF.PI * 0.5f);
-                        rr = r * Art.Lerp(HeadDamage >= 2 ? 0.08f : 0.28f, 1f, bite) * _skullJitter[i];
+                        rr = r * Art.Lerp(Art.Lerp(0.66f, 0.06f, HeadOpen), 1f, bite) * _skullJitter[i];
                     }
                 }
                 outline[i] = c + Dir(a) * rr;
@@ -1451,7 +1479,7 @@ namespace LLD
                     }
                     // the hole, wherever it landed - cheek, brow or the side of the crown
                     Vector2 wAt = c + Dir(HeadWoundAngle) * r * 0.5f;
-                    float wRad = r * (HeadDamage >= 2 ? 0.78f : 0.34f);
+                    float wRad = r * Art.Lerp(0.24f, 0.80f, HeadOpen);
                     SkullWound(wAt, wRad);
                     // what runs out of it starts at the underside of the hole, not the middle,
                     // or the drip is drawn straight over the skull
@@ -1529,7 +1557,8 @@ namespace LLD
             // one is looking down into the cranium, and what is in a cranium is not a black
             // pit, it is brain - pale, pink, and shining wet where the light catches it.
             Vector2 cav = at + Art.FromAngle(_skullJitter[2] * MathF.PI * 2f) * rad * 0.3f;
-            if (HeadDamage >= 2)
+            // brain only shows once enough of the vault is gone to see any
+            if (HeadOpen >= 0.5f)
             {
                 Blob(cav, rad * 0.52f, new Color(104, 30, 34, 255), 11);
                 Blob(cav, rad * 0.44f, Gore.BrainDeep, 3);

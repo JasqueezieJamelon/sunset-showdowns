@@ -437,14 +437,22 @@ namespace LLD
             B("Kill them", KeyboardKey.Four, "4", () => { Dummy.Blood = 0f; Dummy.Killed = true; });
             B("Take the head off", KeyboardKey.Five, "5", () =>
             {
+                // rolled the same way a real one is, so the button shows the same spread
+                // of outcomes the game does rather than one of them over and over
+                float roll = Rng.F(0f, 1f);
                 Dummy.HeadDamage = 2;
-                Dummy.HeadWoundAngle = 0.5f;
+                Dummy.HeadWoundAngle = Rng.F(-0.4f, 1.6f);
+                Dummy.HeadOpen =
+                    roll < 0.22f ? Rng.F(0.06f, 0.26f) :
+                    roll < 0.54f ? Rng.F(0.28f, 0.52f) :
+                    roll < 0.86f ? Rng.F(0.54f, 0.78f) : Rng.F(0.80f, 1.00f);
+                Dummy.ReshapeSkull(new Vector2(Rng.F(-20f, 20f), -400f), Dummy.HeadOpen);
                 Vector2 skull = Dummy.L2W(new Vector2(4f, -398f));
                 Vector2 brain = Dummy.L2W(new Vector2(8f, -404f));
                 Vector2 d = Vector2.Normalize(new Vector2(-1f, -0.25f));
                 Dummy.TearFace(Dummy.HeadWoundAngle, 2, d, skull);
                 Dummy.KnockHat(d);
-                Gore.HeadBurst(skull, 34f * Dummy.Scale, brain, d, Dummy.P.Skin);
+                Gore.HeadBurst(skull, 34f * Dummy.Scale, brain, d, Dummy.P.Skin, Dummy.HeadOpen);
                 Dummy.Killed = true;
                 Dummy.Blood = 0f;
             });
@@ -2327,14 +2335,22 @@ namespace LLD
                 Raylib.BeginTextureMode(_scene);
                 Raylib.ClearBackground(new Color(224, 216, 202, 255));
                 bool kj = e.JawGone;
+                float ko = e.HeadOpen;
+                // The four things a bullet can do to a skull, left to right: through and
+                // out, the vault lifted, the vault and what is under it, and the lot. This
+                // is the spread the roll produces - if these four ever look like the same
+                // picture at four sizes, the variety has gone out of it again.
                 float[] angs = { 0.15f, 2.6f, 1.5f, 0.1f };
-                int[] dmg = { 1, 2, 2, 1 };
+                float[] open = { 0.14f, 0.42f, 0.70f, 0.95f };
+                int[] dmg = { 1, 2, 2, 2 };
                 bool[] eyes = { false, true, true, false };
                 bool[] jaws = { false, false, false, true };
                 for (int i = 0; i < 4; i++)
                 {
                     e.HeadDamage = dmg[i]; e.HeadWoundAngle = angs[i]; e.EyeOut = eyes[i];
                     e.JawGone = jaws[i];
+                    e.HeadOpen = open[i];
+                    e.ReshapeSkull(new Vector2(i * 11f, -400f), open[i]);
                     Vector2 hp = new Vector2(380f + i * 420f, 560f);
                     // tear it, hang it off this head and let it swing itself to rest, so the
                     // plate shows what a face does rather than what a decal does
@@ -2346,7 +2362,7 @@ namespace LLD
                     Art.InkPass = true; e.DrawHeadOnly(hp, false); Art.InkPass = false;
                     e.DrawHeadOnly(hp, false);
                 }
-                e.PoseHeadClear(); e.ClearFlaps(); e.JawGone = kj;
+                e.PoseHeadClear(); e.ClearFlaps(); e.JawGone = kj; e.HeadOpen = ko;
                 Raylib.EndTextureMode();
                 var hi = Raylib.LoadImageFromTexture(_scene.Texture);
                 Raylib.ImageFlipVertical(ref hi);
@@ -2880,16 +2896,64 @@ namespace LLD
                 Vector2 skull = f.L2W(new Vector2(4f, -398f));
                 Vector2 brain = f.L2W(new Vector2(8f, -404f));
                 float r = 34f * f.Scale;
-                Gore.HeadBurst(skull, r, brain, Vector2.Normalize(new Vector2(-1f, -0.2f)), f.P.Skin);
+                Gore.HeadBurst(skull, r, brain, Vector2.Normalize(new Vector2(-1f, -0.2f)), f.P.Skin, 1f);
                 Gore.Audit(brain, skull, r, out int brainN, out int boneN, out float brainFar, out float boneOff);
                 bool pink = Gore.AllBrainPink();
                 // a lump of brain starts inside the brain; a plate of bone starts on the dome
-                bool ok = brainN >= 8 && boneN >= 5 && brainFar <= 21f * f.Scale && boneOff < 0.22f && pink;
+                bool ok = brainN >= 5 && boneN >= 5 && brainFar <= 21f * f.Scale && boneOff < 0.22f && pink;
                 Console.WriteLine($"[check] brain out of the brain: {brainN} lumps, none further than" +
                     $" {brainFar:0}px from the middle of it (the brain is {21f * f.Scale:0}px across the radius)," +
                     $" {boneN} plates of bone off the dome within {boneOff * 100f:0}% of it," +
                     $" every lump pink={pink}" + (ok ? " - ok" : "  FAIL"));
                 Gore.Reset();
+            }
+
+            // NO TWO HEAD SHOTS THE SAME. Every killing head shot used to open the skull by
+            // exactly the same amount and throw exactly the same shower out of it, so the
+            // tenth looked like the first. Shoot forty men in the head and the outcomes have
+            // to spread: some barely open, some come apart, and the amount of bone and brain
+            // that leaves has to vary with it rather than being a fixed handful.
+            {
+                int clean = 0, lifted = 0, opened = 0, emptied = 0, noBrain = 0;
+                int boneLo = 999, boneHi = 0, brainLo = 999, brainHi = 0;
+                const int shots = 40;
+                for (int k = 0; k < shots; k++)
+                {
+                    var man = new Fighter(Roster.All[k % Roster.All.Length], Scene.EnemyStand, -1);
+                    for (int i = 0; i < 20; i++) man.Update(dt, man.Arm.HolsterPoint, Fighter.ArmWeight, true);
+                    Vector2 vault = man.L2W(new Vector2(4f, -398f));
+                    Vector2 from = vault + new Vector2(520f, -40f);
+                    Vector2 shotDir = Vector2.Normalize(vault - from);
+                    if (!man.Raycast(from, shotDir, 2000f, out Zone z, out Vector2 pt, out _)) continue;
+
+                    Gore.Reset();
+                    var rep = man.TraceShot(from, shotDir, 2000f, z, pt);
+                    if (rep.HeadSeverity < 2) continue;
+                    man.ApplyShot(rep, z, shotDir);
+
+                    float o = rep.HeadOpen;
+                    if (o < 0.27f) clean++;
+                    else if (o < 0.53f) lifted++;
+                    else if (o < 0.79f) opened++;
+                    else emptied++;
+
+                    Gore.Audit(man.L2W(new Vector2(8f, -404f)), vault, 34f * man.Scale,
+                               out int bn, out int kn, out _, out _);
+                    if (bn == 0) noBrain++;
+                    boneLo = Math.Min(boneLo, kn); boneHi = Math.Max(boneHi, kn);
+                    brainLo = Math.Min(brainLo, bn); brainHi = Math.Max(brainHi, bn);
+                }
+                Gore.Reset();
+
+                // every outcome must turn up, some shots must give no brain at all, and the
+                // amount of each must be a range rather than a number
+                bool ok = clean > 0 && lifted > 0 && opened > 0 && emptied > 0
+                          && noBrain > 0 && boneHi - boneLo >= 3 && brainHi - brainLo >= 4;
+                Console.WriteLine($"[check] no two head shots the same: of {shots}," +
+                    $" {clean} went straight through, {lifted} lifted the vault, {opened} took what was" +
+                    $" under it, {emptied} emptied him; {noBrain} threw no brain at all;" +
+                    $" bone {boneLo}-{boneHi} plates, brain {brainLo}-{brainHi} lumps" +
+                    (ok ? " - ok" : "  FAIL"));
             }
 
             // A SKULL COMING APART, four frames of it, close enough to see what is what.

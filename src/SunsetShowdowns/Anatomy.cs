@@ -121,6 +121,9 @@ namespace LLD
         // Decided once, where the shot is judged, then replayed the same way on both machines.
         public Vector2 LocalEntry, LocalExit;
         public int HeadSeverity;        // 0 none, 1 torn, 2 skull opened
+        /// How far the vault actually came open, 0 a neat hole through, 1 emptied. Rolled
+        /// here with every other coin toss so both machines open the same skull.
+        public float HeadOpen;
         public bool EyeOut, JawGone;
         public string Note = "";
 

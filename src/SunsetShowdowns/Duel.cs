@@ -929,7 +929,8 @@ namespace LLD
             h.Shock = rep.Shock; h.Bleed = rep.Bleed; h.Gore = rep.Gore;
             h.Instant = rep.Instant; h.Cripple = rep.Cripple;
             h.Disarm = rep.Disarm; h.Through = rep.ThroughAndThrough;
-            h.Head = (byte)(rep.HeadSeverity | (rep.EyeOut ? 4 : 0) | (rep.JawGone ? 8 : 0));
+            h.Head = (byte)(rep.HeadSeverity | (rep.EyeOut ? 4 : 0) | (rep.JawGone ? 8 : 0)
+                            | (Math.Clamp((int)MathF.Round(rep.HeadOpen * 15f), 0, 15) << 4));
             h.Note = rep.Note;
 
             Gore.Impact(point, dir, zone, rep.Gore, rep.Instant);
@@ -982,6 +983,7 @@ namespace LLD
                     HeadSeverity = h.Head & 3,
                     EyeOut = (h.Head & 4) != 0,
                     JawGone = (h.Head & 8) != 0,
+                    HeadOpen = ((h.Head >> 4) & 15) / 15f,
                     Note = h.Note,
                 };
                 rep.Entry = target.L2W(rep.LocalEntry);

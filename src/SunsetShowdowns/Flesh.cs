@@ -154,6 +154,21 @@ namespace LLD
 
         public Vector2 FlapTip(int i) => _flaps[i].Tip;
 
+        /// <summary>
+        /// A fresh shape for the hole. Seeded off where the bullet came out and how far the
+        /// vault opened - both of which the other machine already has - so the wound looks
+        /// different for every shot and the same on both screens.
+        /// </summary>
+        public void ReshapeSkull(Vector2 localExit, float open)
+        {
+            int seed = (int)(localExit.X * 8f) * 73856093
+                     ^ (int)(localExit.Y * 8f) * 19349663
+                     ^ (int)(open * 1024f) * 83492791;
+            var r = new Random(seed);
+            for (int i = 0; i < _skullJitter.Length; i++)
+                _skullJitter[i] = 0.62f + (float)r.NextDouble() * 0.38f;
+        }
+
         // ---------- the sandbox ----------
         //
         // Nothing in the game calls either of these. They exist so a man can be put back on
