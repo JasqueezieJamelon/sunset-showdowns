@@ -128,6 +128,13 @@ namespace LLD
         float _aiPatience;      // ...but not forever
         float _jumpAt = -1f;    // when a man with no nerve goes before the word
         bool _holdoutSpent;
+
+        /// <summary>
+        /// He went before the word. He is disqualified exactly as you would be for going
+        /// early, so he never fires - he clears leather and then he is a target. Without
+        /// this the screen told you to take your time and then he shot you, which was a lie.
+        /// </summary>
+        bool _enemyFouled;
         float _sermonT;
         int _sermonLine;
 
@@ -162,7 +169,7 @@ namespace LLD
             Enemy = new Fighter(def, Scene.EnemyStand, -1);
             Enemy.NoFlinch = def.NoFlinch;
             // a leg he has been shot in before is a leg he still stands badly on
-            Player.Crouch = Hurts[Hurt.Leg] * 4.5f;
+            Player.StanceDrop = Hurts[Hurt.Leg] * 5.5f;
             Headline = ambush ? "AMBUSH" : def.Name.ToUpperInvariant();
             Subline = ambush ? "\"you are a hard man to find, mister-\"" : def.Trade;
             _phaseT = ambush ? 1.5f : 2.0f;
@@ -317,7 +324,8 @@ namespace LLD
                         if (_jumpAt > 0f && _countdown <= _jumpAt)
                         {
                             GoLive(mouse, "HE DREW EARLY", Rng.F(0.62f, 0.92f));
-                            Subline = "take your time";
+                            Subline = "he is yours - take your time";
+                            _enemyFouled = true;
                             _jumpAt = -1f;
                             break;
                         }
@@ -703,6 +711,9 @@ namespace LLD
             Vector2 have = Enemy.Arm.Hand - Enemy.Arm.Shoulder;
             float off = MathF.Abs(MathF.Atan2(want.Y, want.X) - MathF.Atan2(have.Y, have.X));
             bool settled = off < 0.06f && Enemy.Arm.Vel.Length() < 260f;
+
+            // he fouled; he gets to stand there holding it and nothing else
+            if (_enemyFouled) return;
 
             if (_aiNext <= 0f && (settled || _aiAimSet > 1.3f))
             {

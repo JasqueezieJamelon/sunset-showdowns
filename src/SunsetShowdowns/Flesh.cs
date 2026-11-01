@@ -242,6 +242,7 @@ namespace LLD
 
             Doll.Muscle = 1f;
             Doll.LegPower = 1f;
+            Doll.Upright = true;
             Doll.StepLeg = -1;
             Doll.Asleep = false;
 

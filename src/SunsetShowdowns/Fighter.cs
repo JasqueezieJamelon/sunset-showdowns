@@ -87,6 +87,7 @@ namespace LLD
         float _stepDelay;
         int _failedSteps;
         public float Crouch;         // kept for leg wounds only
+        public float StanceDrop;     // how far a carried leg wound sits him down
 
         public float AnkleHeight => 38f * Scale;
         public float FootFloor => Scene.GroundY - AnkleHeight;
@@ -671,6 +672,7 @@ namespace LLD
             // exactly where it was; all that happens is that the strength goes out of it.
             Muscle = 0f;
             Doll.Muscle = 0f;
+            Doll.Upright = false;
             Doll.StepLeg = -1;
             Doll.KickAll(new Vector2(PelvisV.X * 0.6f + dir.X * 34f * force, -30f));
             Doll.Kick(Ragdoll.Chest, new Vector2(ChestV.X * 0.5f, ChestV.Y * 0.4f));
@@ -798,7 +800,11 @@ namespace LLD
 
             // No formula for how low he stands. A wounded knee gives, and a wide stance puts
             // the legs at an angle so the hips come down on their own.
-            Crouch += (Kneel * 40f - Crouch) * (1f - MathF.Exp(-7f * dt));
+            // A LEG HE CANNOT STAND ON STRAIGHT. StanceDrop is what a carried leg wound
+            // does to how he holds himself, and it has to be part of the target here - set
+            // once from outside it was wiped on the very next frame by this line, so the
+            // leg scar I said you could see on a man was not visible at all.
+            Crouch += (Kneel * 40f + StanceDrop - Crouch) * (1f - MathF.Exp(-7f * dt));
 
             float footWorld = SupportX;
             float lever = PelvisP.X - footWorld;
@@ -810,6 +816,7 @@ namespace LLD
 
             // the orders his muscles get this frame, and the whole of them
             Doll.Muscle = Down ? 0f : Muscle;
+            Doll.Upright = !Down;
             Doll.Lean = LeanAng;
             Doll.StandHeight = RestLeg * Scale - Crouch * Scale;
             // the legs aim at a length their own bones can actually be, less however far he sinks

@@ -485,7 +485,7 @@ namespace LLD
                 };
                 _lab.Hurts.Clear();
                 if (_labScar != Hurt.None) _lab.Hurts.Set(_labScar, 3);
-                _lab.Player.Crouch = _lab.Hurts[Hurt.Leg] * 4.5f;
+                _lab.Player.StanceDrop = _lab.Hurts[Hurt.Leg] * 5.5f;
                 BuildLabKit();
             });
             B("Fill the cylinder", KeyboardKey.R, "R", () => _lab.Ammo = Duel.MaxAmmo);
@@ -756,7 +756,7 @@ namespace LLD
         {
             var look = S.Look.ToCharDef("You");
             var f = new Fighter(look, new Vector2(380f, Scene.GroundY - 40f), 1);
-            f.Crouch = _camp.Scars[Hurt.Leg] * 4.5f;
+            f.StanceDrop = _camp.Scars[Hurt.Leg] * 5.5f;
             f.Breath = _titleT;
             f.Update(0f, f.Arm.HolsterPoint, 0.5f, true);
             f.Draw(false);
@@ -2900,12 +2900,106 @@ namespace LLD
                 Gore.Audit(brain, skull, r, out int brainN, out int boneN, out float brainFar, out float boneOff);
                 bool pink = Gore.AllBrainPink();
                 // a lump of brain starts inside the brain; a plate of bone starts on the dome
-                bool ok = brainN >= 5 && boneN >= 5 && brainFar <= 21f * f.Scale && boneOff < 0.22f && pink;
+                // the counts are deliberately a range now, so the floor here is only "some of each"
+                bool ok = brainN >= 3 && boneN >= 2 && brainFar <= 21f * f.Scale && boneOff < 0.22f && pink;
                 Console.WriteLine($"[check] brain out of the brain: {brainN} lumps, none further than" +
                     $" {brainFar:0}px from the middle of it (the brain is {21f * f.Scale:0}px across the radius)," +
                     $" {boneN} plates of bone off the dome within {boneOff * 100f:0}% of it," +
                     $" every lump pink={pink}" + (ok ? " - ok" : "  FAIL"));
                 Gore.Reset();
+            }
+
+            // A man who goes before the word has fouled, and a man who has fouled does not
+            // get to shoot you. The screen says take your time; it has to be true. Stand
+            // there with your hands down for twenty seconds after Dusty jumps the call and
+            // nothing at all may happen to you.
+            {
+                int jumped = 0, shotAnyway = 0;
+                const int tries = 40;
+                for (int k = 0; k < tries; k++)
+                {
+                    var sd = new Duel(Roster.All[0], S);     // Dusty Pell
+                    Vector2 held = sd.HolsterPoint;
+                    bool early = false;
+                    for (float t = 0f; t < 10f && sd.Phase != Phase.Live; t += dt)
+                    {
+                        sd.Update(dt, held, false, false);
+                        if (sd.AimReset) { sd.AimReset = false; held = sd.AimResetTo; }
+                        if (sd.Headline == "HE DREW EARLY") early = true;
+                    }
+                    if (!early) continue;
+                    jumped++;
+                    float blood0 = sd.Player.Blood;
+                    for (float t = 0f; t < 20f; t += dt) sd.Update(dt, held, false, false);
+                    if (sd.Player.Blood < blood0 - 0.01f) shotAnyway++;
+                }
+                bool ok = jumped >= 8 && shotAnyway == 0;
+                Console.WriteLine($"[check] a false start is a free kill: he jumped {jumped}/{tries} times," +
+                    $" and shot you anyway in {shotAnyway} of them" + (ok ? " - ok" : "  FAIL"));
+            }
+
+            // A MAN SHOT IN THE LEG STANDS ON BOTH OF THEM, or he goes down. What he must
+            // not do is hang between the two: one leg locked straight and bearing all of
+            // him while the other bounces off the dirt underneath, which is what keeps
+            // coming back. Either both boots carry a share of him or he is on the ground.
+            {
+                int hung = 0, worstBounce = 0, wentDown = 0, stood = 0;
+                float hungFor = 0f;
+                float worstShare = 1f;
+                const int tries = 14;
+                for (int k = 0; k < tries; k++)
+                {
+                    var man = new Fighter(Roster.All[k % Roster.All.Length], Scene.EnemyStand, -1);
+                    for (int i = 0; i < 60; i++) man.Update(dt, man.Arm.HolsterPoint, Fighter.ArmWeight, true);
+
+                    // Badly hurt but not finished: the state the man in the picture is in -
+                    // shot about, bleeding, shock taking the strength out of him, still up.
+                    man.Shock = 40f + (k % 5) * 14f;
+                    man.Blood = 70f - (k % 4) * 12f;
+                    man.BleedRate = 5f;
+                    man.Kneel = 0.3f + (k % 3) * 0.2f;
+                    // and half of them have had a leg shot out from under them, which is
+                    // the state the picture was taken in: no strength left, still up
+                    if (k % 2 == 1) man.Crippled = true;
+
+                    // and shoved, which is what takes a boot off the ground in the first place
+                    for (float t = 0f; t < 0.6f; t += dt) man.Update(dt, man.Arm.HolsterPoint, Fighter.ArmWeight, true);
+                    man.Doll.Kick(Ragdoll.Chest, new Vector2((k % 2 == 0 ? -1f : 1f) * (160f + k * 22f), -60f));
+                    // measured from the shove onwards, not after he has had time to get over
+                    // it: the fault is a man who HANGS there, so the thing to measure is how
+                    // long he spends hanging
+                    int bounces = 0;
+                    float share = 1f, hang = 0f, worstHang = 0f;
+                    bool wasUp = false;
+                    for (float t = 0f; t < 4f && !man.Down; t += dt)
+                    {
+                        man.Update(dt, man.Arm.HolsterPoint, Fighter.ArmWeight, true);
+                        if (man.Down) break;
+                        share = MathF.Min(man.Doll.DbgShareB, man.Doll.DbgShareF);
+                        if (share < 0.1f) { hang += dt; worstHang = MathF.Max(worstHang, hang); }
+                        else hang = 0f;
+                        bool up = !man.Doll.DbgPlantB || !man.Doll.DbgPlantF;
+                        if (up && !wasUp) bounces++;
+                        wasUp = up;
+                    }
+                    hungFor = MathF.Max(hungFor, worstHang);
+                    if (man.Down) wentDown++;
+                    else
+                    {
+                        stood++;
+                        worstShare = MathF.Min(worstShare, share);
+                        worstBounce = Math.Max(worstBounce, bounces);
+                        if (worstHang > 0.8f || bounces > 8) hung++;
+                    }
+                }
+                // most men shot in the leg properly do go down, which is correct - the check
+                // only needs a few left standing to have measured anything at all
+                bool ok = hung == 0 && stood >= 3;
+                Console.WriteLine($"[check] shot in the leg, still on both: {stood} stayed up, {wentDown} went down," +
+                    $" {hung} left hanging" +
+                    $" on one leg, lightest boot carried {worstShare * 100f:0}%," +
+                    $" worst boot lifted {worstBounce} times, longest spell on one leg {hungFor:0.0}s" +
+                    (ok ? " - ok" : "  FAIL"));
             }
 
             // NO TWO HEAD SHOTS THE SAME. Every killing head shot used to open the skull by

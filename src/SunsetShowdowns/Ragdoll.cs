@@ -54,6 +54,15 @@ namespace LLD
         /// </summary>
         public float LegPower = 1f;
 
+        /// <summary>
+        /// He is on his feet. NOT the same as having strength left: a man whose leg has
+        /// been shot out from under him has no muscle to speak of and is still standing on
+        /// the thing, and he braces with it until he actually goes down. Gating the braced
+        /// behaviour on muscle instead put a wounded man on ice with soft joints while his
+        /// legs were still pushing, which is half of why he pogoed.
+        /// </summary>
+        public bool Upright;
+
         /// <summary>How hard each leg is working this tick, 0 to 1 of what it has.</summary>
         public float LoadB, LoadF;
 
@@ -104,10 +113,18 @@ namespace LLD
         }
 
         /// <summary>True when that boot is taking weight.</summary>
-        public bool Planted(int leg)
+        public bool Planted(int leg) => Grip(leg) > 0.5f;
+
+        /// <summary>
+        /// How much of him that boot is in a position to carry, 1 flat on the street and 0
+        /// clear of it, fading over the depth of a boot rather than switching.
+        /// </summary>
+        public float Grip(int leg)
         {
+            if (StepLeg == leg) return 0f;
             int f = Foot(leg);
-            return StepLeg != leg && Pos[f].Y >= GroundY - Clear[f] - 3f;
+            float above = (GroundY - Clear[f]) - Pos[f].Y;     // how far off the dirt
+            return Math.Clamp(1f - above / 18f, 0f, 1f);
         }
 
         /// <summary>
@@ -177,6 +194,7 @@ namespace LLD
 
             Face = face;
             Active = true;
+            Upright = true;
             Asleep = false;
             StepLeg = -1;
             _accum = 0f;
@@ -363,19 +381,34 @@ namespace LLD
             // only a spring, and two stiff springs onto one point do not share anything - the
             // one that happens to be a hair shorter takes the lot, which is why he stood with
             // all of himself on the back boot and the front one along for the ride.
-            bool pB = Planted(0), pF = Planted(1);
+            // A BOOT DOES NOT STOP CARRYING HIM THE INSTANT IT LEAVES THE DIRT. Planted was
+            // a yes-or-no three pixels wide, so a boot hovering a hair off the ground handed
+            // its entire share to the other leg in one frame and took it all back the next.
+            // That is the man standing on one locked leg with the other bouncing underneath
+            // him: not a wound, not the springs, just a flag flipping. How much a boot
+            // carries now fades out over the length of a boot, so the load crosses between
+            // his legs instead of jumping.
+            float gB = Grip(0), gF = Grip(1);
+            bool pB = gB > 0.5f, pF = gF > 0.5f;
             float shareB, shareF;
-            if (pB && pF)
             {
+                float lB, lF;
                 float xb = Pos[Foot(0)].X, xf = Pos[Foot(1)].X, span = xf - xb;
                 if (MathF.Abs(span) > 2f)
                 {
-                    shareB = Math.Clamp((xf - Pos[Pelvis].X) / span, 0f, 1f);
-                    shareF = 1f - shareB;
+                    lB = Math.Clamp((xf - Pos[Pelvis].X) / span, 0f, 1f);
+                    lF = 1f - lB;
                 }
-                else shareB = shareF = 0.5f;
+                else lB = lF = 0.5f;
+
+                // the lever rule says how it SHOULD split; the grip says how much of that
+                // each boot is actually in a position to take
+                float wB = lB * gB, wF = lF * gF;
+                float tot = wB + wF;
+                float carry = MathF.Min(1f, gB + gF);
+                if (tot > 0.0001f) { shareB = wB / tot * carry; shareF = wF / tot * carry; }
+                else { shareB = shareF = 0f; }
             }
-            else { shareB = pB ? 1f : 0f; shareF = pF ? 1f : 0f; }
             DbgShareB = shareB; DbgShareF = shareF; DbgPlantB = pB; DbgPlantF = pF;
 
             for (int leg = 0; leg < 2; leg++)
@@ -553,7 +586,7 @@ namespace LLD
 
             float push = Push;
             float back = 0f;
-            if (Muscle <= 0.05f)
+            if (!Upright)
             {
                 push = LimpPush;
                 back = push * 0.5f;
@@ -580,7 +613,7 @@ namespace LLD
         /// </summary>
         void Plant(float ground)
         {
-            if (Muscle <= 0.02f) return;
+            if (!Upright) return;
             for (int leg = 0; leg < 2; leg++)
             {
                 if (StepLeg == leg) continue;
