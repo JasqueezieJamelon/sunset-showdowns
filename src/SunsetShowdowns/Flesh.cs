@@ -129,13 +129,13 @@ namespace LLD
         {
             // the cheek, or whatever the bullet actually crossed, lifted and left hanging
             float a = woundAngle + Rng.F(-0.35f, 0.35f);
-            TearFlap(a, Rng.F(23f, 32f), Rng.F(13f, 18f));
+            TearFlap(a, Rng.F(15f, 22f), Rng.F(8f, 12f));
 
             if (severity >= 2)
             {
                 // the crown comes up with the hair still on it
                 TearFlap(woundAngle + Rng.F(1.0f, 1.9f) * (Rng.Chance(0.5f) ? 1f : -1f),
-                         Rng.F(22f, 30f), Rng.F(14f, 19f), hair: true);
+                         Rng.F(14f, 20f), Rng.F(9f, 13f), hair: true);
                 // and a piece of him goes properly: a flat sheet of face, not a pellet
                 Gore.FaceSkin(worldAt, worldDir, P.Skin, 2);
             }
@@ -149,7 +149,7 @@ namespace LLD
         public void HangJaw()
         {
             foreach (var f0 in _flaps) if (f0.Jaw) return;
-            TearFlap(-2.2f, 28f, 15f, jaw: true);
+            TearFlap(-2.2f, 19f, 11f, jaw: true);
         }
 
         public Vector2 FlapTip(int i) => _flaps[i].Tip;
@@ -160,7 +160,7 @@ namespace LLD
         // his feet and taken apart again without restarting anything, which is the whole
         // point of having somewhere to test.
 
-        /// <summary>Back on his feet with whatever damage he is carrying.</summary>
+        /// <summary>Back on their feet with whatever damage they are carrying.</summary>
         public void StandUp()
         {
             Killed = false;
@@ -175,10 +175,25 @@ namespace LLD
             BleedRate = MathF.Min(BleedRate, 2f);
             Muscle = 1f;
             _legSpent = 0f;
+
+            // THE BODY IS THE RAGDOLL. Clearing the flags and leaving the ragdoll lying in
+            // the dirt does not stand anybody up - it leaves a corpse on the floor with the
+            // strength switched back on, twitching, which is why both of these buttons
+            // looked like they did nothing at all. The body has to be stood up too, where it
+            // is lying, and then settled onto its feet.
+            Vector2 where = new Vector2(Doll.Pos[Ragdoll.Pelvis].X, Scene.GroundY);
+            Doll.Stand(where, Face, Scale);
+            Settle();
+
             Doll.Muscle = 1f;
             Doll.LegPower = 1f;
             Doll.StepLeg = -1;
             Doll.Asleep = false;
+
+            Arm.Shoulder = L2W(new Vector2(10f, -318f));
+            Arm.HolsterPoint = L2W(new Vector2(48f, -172f));
+            Arm.Snap(Arm.HolsterPoint);
+            Arm.Holstered = true;
         }
 
         /// <summary>Whole again: no holes, no scars, no pieces hanging off, gun back in hand.</summary>
@@ -229,6 +244,24 @@ namespace LLD
         {
             if (_flaps.Count == 0) return;
             HeadFrame(out Vector2 c, out Vector2 up, out Vector2 fwd);
+
+            // Skin lets go in the end. A piece hanging off a dead man peels until it is only
+            // holding by nothing, and then it is not holding at all - it drops, with whatever
+            // swing it had at the time, and lies in the street with the rest of him. Left
+            // attached forever they read as flags nailed to his head.
+            for (int i = _flaps.Count - 1; i >= 0; i--)
+            {
+                var fl = _flaps[i];
+                if (Dead && fl.Peel >= 1f)
+                {
+                    Vector2 fell = (fl.Tip - fl.Prev) / MathF.Max(dt, 0.0001f);
+                    Gore.DropPiece(fl.Tip, fell * 0.5f,
+                        fl.Hair ? Art.Shade(P.Hair, 0.86f) : Art.Shade(P.Skin, 0.84f),
+                        fl.Wide * Scale * 0.9f);
+                    _flaps.RemoveAt(i);
+                }
+            }
+            if (_flaps.Count == 0) return;
 
             foreach (var f in _flaps)
             {

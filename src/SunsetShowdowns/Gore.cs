@@ -203,7 +203,9 @@ namespace LLD
 
             if (lethal || zone == Zone.Head || gore > 1.2f)
             {
-                int g = (int)((zone == Zone.Head ? 10 : 4) * GoreScale * gore);
+                // A hit throws a lot of liquid and only a little solid. It used to throw
+                // ten lumps of meat out of a head, which read as gravel.
+                int g = (int)((zone == Zone.Head ? 3 : 1) * GoreScale * gore);
                 for (int i = 0; i < g; i++) Gib(p, dir, zone == Zone.Head);
             }
         }
@@ -235,7 +237,7 @@ namespace LLD
                     Col = Art.Alpha(Blood(0.95f), 0.5f),
                 });
             if (gore > 1.4f)
-                for (int i = 0; i < (int)(6 * GoreScale * gore); i++) Gib(p, dir, true);
+                for (int i = 0; i < (int)(2 * GoreScale * gore); i++) Gib(p, dir, true);
         }
 
         /// <summary>
@@ -405,6 +407,36 @@ namespace LLD
         }
 
         /// <summary>
+        /// A piece that was hanging off somebody and has stopped hanging off them. It keeps
+        /// the swing it had when it let go, so it carries on the way it was already going.
+        /// </summary>
+        public static void DropPiece(Vector2 at, Vector2 vel, Color col, float rad)
+        {
+            if (Level == GoreLevel.Off) return;
+            int sides = Rng.I(5, 8);
+            var shape = new Vector2[sides];
+            for (int k = 0; k < sides; k++)
+            {
+                float a = k / (float)sides * MathF.PI * 2f;
+                float rr = rad * Rng.F(0.7f, 1.2f);
+                shape[k] = new Vector2(MathF.Cos(a) * rr, MathF.Sin(a) * rr * 0.5f);
+            }
+            Add(new Particle
+            {
+                Kind = PKind.Gib,
+                Pos = at,
+                Vel = vel + new Vector2(Rng.F(-40f, 40f), Rng.F(-60f, 10f)),
+                Rad = rad,
+                MaxLife = 20f, Life = 20f,
+                Rot = Rng.F(0f, 6.28f),
+                RotVel = Rng.F(-5f, 5f),
+                Col = col,
+                Shape = shape,
+                Bounce = 0.1f,
+            });
+        }
+
+        /// <summary>
         /// What comes out of a brain. Soft, lobed, wet lumps - not the jagged shards a bone
         /// breaks into - and pale pink rather than red.
         /// </summary>
@@ -522,11 +554,11 @@ namespace LLD
                 });
 
             BrainMatter(brain, dir, 11);
-            SkullBurst(skull, radius, dir, 9);
-            FaceSkin(skull + dir * radius * 0.4f, dir, skin, 3);
+            SkullBurst(skull, radius, dir, 6);
+            FaceSkin(skull + dir * radius * 0.4f, dir, skin, 2);
             // meat only: every piece of bone in a burst skull comes off the dome, where
             // bone is, and not out of the middle of his head where bone is not
-            for (int i = 0; i < (int)(5 * GoreScale); i++) Gib(skull, dir, true, false);
+            for (int i = 0; i < (int)(2 * GoreScale); i++) Gib(skull, dir, true, false);
         }
 
         static void Gib(Vector2 p, Vector2 dir, bool big, bool allowBone = true)
@@ -684,7 +716,16 @@ namespace LLD
                     p.Pos.Y = Ground;
                     if (p.Kind == PKind.Blood)
                     {
-                        Stamp(p.Pos, p.Rad * Rng.F(1.4f, 2.8f), Art.Alpha(p.Col, 0.85f));
+                        // a drop that arrives fast throws a longer mark along the ground than
+                        // one that drips straight down: it runs where it was going
+                        float sp = MathF.Min(p.Vel.Length(), 900f);
+                        Stamp(p.Pos, p.Rad * Rng.F(1.8f, 3.4f), Art.Alpha(p.Col, 0.85f));
+                        if (sp > 260f)
+                        {
+                            Vector2 run = new Vector2(MathF.Sign(p.Vel.X), 0f) * (sp * 0.035f);
+                            Stamp(p.Pos + run * 0.5f, p.Rad * 1.5f, Art.Alpha(p.Col, 0.6f));
+                            Stamp(p.Pos + run, p.Rad * 1.1f, Art.Alpha(p.Col, 0.45f));
+                        }
                         Parts.RemoveAt(i);
                         continue;
                     }
@@ -711,8 +752,18 @@ namespace LLD
                 switch (p.Kind)
                 {
                     case PKind.Blood:
-                        Raylib.DrawCircleV(p.Pos, p.Rad, p.Col);
-                        break;
+                        {
+                            // Blood is a LIQUID. Drawn as a disc it is a pellet, and a
+                            // hundred pellets is gravel in the air rather than a spray; a
+                            // flying drop is pulled out long behind itself along the way it
+                            // is going, and only looks round once it has nearly stopped.
+                            float sp = p.Vel.Length();
+                            if (sp < 70f) { Raylib.DrawCircleV(p.Pos, p.Rad, p.Col); break; }
+                            Vector2 u = p.Vel / sp;
+                            float tail = MathF.Min(sp * 0.016f, p.Rad * 4.5f);
+                            Art.Capsule(p.Pos, p.Pos - u * tail, p.Rad, p.Col);
+                            break;
+                        }
                     case PKind.Mist:
                         Raylib.DrawCircleV(p.Pos, p.Rad * (1.6f - t), Art.Alpha(p.Col, t * 0.55f));
                         break;
