@@ -39,7 +39,7 @@ namespace LLD
     public class App
     {
         /// Bumped by the last digit on every change. Stays on 0.1.x until told otherwise.
-        public const string Version = "0.2.0.1";
+        public const string Version = "0.2.0.2";
 
         Settings S;
         RenderTexture2D _scene;
@@ -2111,6 +2111,40 @@ namespace LLD
                     "  client sees \"" + cd3.Headline + "\" drawn=" + cd3.Drawn);
                 Log("score was " + s0 + "-" + s1 + ", now " + host.Score[0] + "-" + host.Score[1] +
                     " (client " + client.Score[0] + "-" + client.Score[1] + ")");
+            }
+
+            // NOBODY IS DISQUALIFIED FOR STANDING STILL. A network round builds a fresh Duel
+            // and starts the count in the same breath, before Update has ever handed it a
+            // cursor - so the count must not take its anchor there. It did once, anchored at
+            // the corner of the world, and threw both men out of every online round on the
+            // first frame. Hold both cursors dead still through a whole count: neither man
+            // may be disqualified, and both must reach the call.
+            {
+                var hd4 = new Duel(S, host, 0);
+                var cd4 = new Duel(S, client, 1);
+                client.RoundStartPending = false;
+                double d4 = host.HostTime + 1.4;
+                host.SendRoundStart(3, d4, 4);
+                hd4.BeginNetRound(d4);
+                for (int i = 0; i < 400 && !client.RoundStartPending; i++) { host.Poll(dt); client.Poll(dt); System.Threading.Thread.Sleep(2); }
+                cd4.BeginNetRound(client.PendingDrawTime);
+
+                Vector2 hStill = hd4.HolsterPoint, cStill = cd4.HolsterPoint;
+                bool hFoul = false, cFoul = false;
+                for (int i = 0; i < 4000 && !(hd4.Phase == Phase.Live && cd4.Phase == Phase.Live); i++)
+                {
+                    host.Poll(dt); client.Poll(dt);
+                    hd4.Update(dt, hStill, false, false);
+                    cd4.Update(dt, cStill, false, false);
+                    if (hd4.Phase == Phase.Foul) hFoul = true;
+                    if (cd4.Phase == Phase.Foul) cFoul = true;
+                    if (hFoul || cFoul) break;
+                    System.Threading.Thread.Sleep(1);
+                }
+                bool ok = !hFoul && !cFoul && hd4.Phase == Phase.Live && cd4.Phase == Phase.Live;
+                Log("[check] standing still online is not an early draw: host fouled=" + hFoul +
+                    " client fouled=" + cFoul + ", host reached " + hd4.Phase +
+                    " and client reached " + cd4.Phase + (ok ? " - ok" : "  FAIL"));
             }
 
             // version gate

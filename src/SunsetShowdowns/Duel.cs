@@ -52,11 +52,17 @@ namespace LLD
         const float FireGrace = 0.12f;   // how long the host waits so the slower line still counts
 
         // Where the cursor was when READY went up. During the count the reach for the gun is
-        // measured from here, by exactly the same yardstick the live draw uses (DrawTrigger):
-        // a twitch, a settle, a hand shifting on the mouse is not a draw and costs nothing,
-        // but a movement big enough that it would have cleared the leather IS the draw, and
-        // doing it before the word is an early one. See the count, below.
+        // measured from here: a twitch or a hand shifting on the mouse is not a draw and costs
+        // nothing, but a reach is the draw, and doing it before the word is an early one.
+        // See the count, below.
+        //
+        // It is taken on the first frame of the count that is actually handed a cursor, and
+        // never at the moment the round is set up. A network round builds a fresh Duel and
+        // starts the count in the same breath, before Update has ever run, so there is no
+        // cursor to take yet - reading one there anchored every online count at the corner of
+        // the world and disqualified both men the instant the first frame arrived.
         Vector2 _countAnchor;
+        bool _countAnchored;
 
         // The gun clears the leather pointing at the dirt. From the moment of the call, mouse
         // movement is measured from where it was, so you have to pull the gun up yourself
@@ -285,7 +291,7 @@ namespace LLD
                         Subline = "";
                         _sermonT = 1.1f;
                         _aimAnchored = false;
-                        _countAnchor = mouse;
+                        _countAnchored = false;
                         Sfx.Play("ready", 0.7f);
                     }
                     break;
@@ -300,6 +306,7 @@ namespace LLD
                         // a mouse. Measured from where the cursor stood when READY went up,
                         // so it is the whole reach that counts, not the speed of it - creep
                         // there slowly over four seconds and you have still gone for it.
+                        if (!_countAnchored) { _countAnchor = mouse; _countAnchored = true; }
                         bool reached = Vector2.Distance(mouse, _countAnchor) > ReadyReach;
 
                         if (IsNet)
@@ -806,7 +813,7 @@ namespace LLD
             Subline = "";
             _foulSent = false;
             _aimAnchored = false;
-            _countAnchor = _lastMouse;
+            _countAnchored = false;
             Sfx.Play("ready", 0.7f);
         }
 
