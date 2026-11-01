@@ -822,10 +822,13 @@ namespace LLD
                             }
                             if (p.Rest && !glass)
                             {
-                                // settled meat reads as a wet smear, not a paper cut-out, and
-                                // what soaks out from under a piece of brain is pink
-                                Raylib.DrawCircleV(p.Pos, p.Rad * (brain ? 1.9f : 1.5f),
-                                    Art.Alpha(brain ? BrainWet : Blood(0.55f), brain ? 0.42f : 0.5f));
+                                // NO DARK RING ROUND IT. A settled piece used to be given a
+                                // wide translucent disc underneath to read as wet, and at
+                                // rest that disc is a dark circle drawn round every scrap on
+                                // the street - dozens of them, all the same shape, which is
+                                // the one thing nothing else in this game looks like. What
+                                // soaks out of a piece goes into the stain layer when it
+                                // lands, where it belongs, and is already there.
                                 Art.Poly(pts, p.Col);
                             }
                             else if (brain)
@@ -836,7 +839,11 @@ namespace LLD
                                 Raylib.DrawCircleV(p.Pos - new Vector2(0f, p.Rad * 0.3f),
                                     p.Rad * 0.34f, Art.Alpha(BrainPale, 0.55f));
                             }
-                            else Art.Shape(pts, p.Col, 1.2f);
+                            // and nothing in flight gets an ink line round it either: at this
+                            // size the outline is most of the piece, so a shower of gore came
+                            // out looking like a handful of black beads with colour in them
+                            else if (glass) Art.Shape(pts, p.Col, 1.2f);
+                            else Art.Poly(pts, p.Col);
                             break;
                         }
                     case PKind.Hat:

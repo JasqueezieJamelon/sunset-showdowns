@@ -105,7 +105,9 @@ namespace LLD
     {
         public const int Showing = 3;        // names on the board at once
         public const int VaneAt = 12;        // skulls taken before the last man comes out
-        public const int Tries = 3;          // goes you get at one fight before the run ends
+        /// One. A run is one life - three made a bad fight cost nothing much, and the
+        /// wounds you carry out of a fight only mean anything if losing one is the end.
+        public const int Tries = 1;
         public const int MaxSkulls = 5;
 
         public readonly Wounds Scars = new Wounds();

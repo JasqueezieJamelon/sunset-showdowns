@@ -81,7 +81,8 @@ namespace LLD
             int sw = Raylib.GetScreenWidth(), sh = Raylib.GetScreenHeight();
             float scale = MathF.Min(sw / Art.VW, sh / Art.VH);
             float per = MathF.Max(scale * _cam.Zoom, 0.0001f);     // screen pixels to world
-            _aimWorld += Raylib.GetMouseDelta() / per;
+            // the hand moves as far as the mouse does, times whatever the player asked for
+            _aimWorld += Raylib.GetMouseDelta() * S.Sens / per;
             _aimWorld.X = Math.Clamp(_aimWorld.X, -2200f, 4200f);
             _aimWorld.Y = Math.Clamp(_aimWorld.Y, -1400f, Scene.GroundY + 500f);
         }
@@ -139,10 +140,16 @@ namespace LLD
             Sfx.Master = S.Master;
             Sfx.Volume = S.Sfx;
             Gore.Init();
-            Gore.Level = S.Gore;
+            // Always full outside the test range. The setting is gone from the menu, so a
+            // saved file that happened to say OFF would have turned the blood off for good
+            // with no way left to turn it back on.
+            Gore.Level = GoreLevel.Full;
             Gore.Ground = Scene.GroundY;
 
-            if (!hidden && S.AutoUpdate) Updater.CheckInBackground(S.UpdateUrl);
+            // Always, now. There is no switch for this any more: a game that can fetch its
+            // own next version should just do it, and the offer is still only an offer -
+            // nothing downloads until somebody presses U on the title screen.
+            if (!hidden) Updater.CheckInBackground(S.UpdateUrl);
 
             _scene = Raylib.LoadRenderTexture((int)Art.VW, (int)Art.VH);
             Raylib.SetTextureFilter(_scene.Texture, TextureFilter.Bilinear);
@@ -668,7 +675,7 @@ namespace LLD
         float[] BoardRowY(int n)
         {
             var ys = new float[n];
-            for (int i = 0; i < n; i++) ys[i] = 296f + i * 112f;
+            for (int i = 0; i < n; i++) ys[i] = 262f + i * 112f;
             return ys;
         }
 
@@ -680,7 +687,7 @@ namespace LLD
             _menuIndex = Math.Clamp(_menuIndex, 0, n - 1);
 
             for (int i = 0; i < n; i++)
-                if (MathF.Abs(_vmouse.Y - (ys[i] + 32f)) < 52f && _vmouse.X > 760f) _menuIndex = i;
+                if (MathF.Abs(_vmouse.Y - (ys[i] + 36f)) < 48f && _vmouse.X > 734f) _menuIndex = i;
 
             if (Raylib.IsKeyPressed(KeyboardKey.Down)) { _menuIndex = (_menuIndex + 1) % n; Sfx.Play("click", 0.4f); }
             if (Raylib.IsKeyPressed(KeyboardKey.Up)) { _menuIndex = (_menuIndex - 1 + n) % n; Sfx.Play("click", 0.4f); }
@@ -688,7 +695,7 @@ namespace LLD
             if (Raylib.IsKeyPressed(KeyboardKey.Escape)) { _screen = Screen.Title; _menuIndex = 0; NewRun(); return; }
 
             bool go = Raylib.IsKeyPressed(KeyboardKey.Enter) || Raylib.IsKeyPressed(KeyboardKey.Space) ||
-                      (Raylib.IsMouseButtonPressed(MouseButton.Left) && _vmouse.X > 760f);
+                      (Raylib.IsMouseButtonPressed(MouseButton.Left) && _vmouse.X > 734f);
             if (!go) return;
 
             Sfx.Play("click", 0.7f);
@@ -705,49 +712,85 @@ namespace LLD
             _fade = 1f;
         }
 
+        // ---------- the bounty board ----------
+        //
+        // It is a board. Planks, a frame round it, and a notice nailed up for every name -
+        // each one its own bit of paper, pinned at the corners, hanging at its own slight
+        // angle because nobody lines these up. Reading it should feel like standing in front
+        // of a wall in a land office rather than scrolling a list.
+
+        static readonly Color BoardWood = new Color(84, 58, 40, 255);
+        static readonly Color BoardWoodDark = new Color(62, 42, 30, 255);
+        static readonly Color BoardFrame = new Color(104, 72, 48, 255);
+        static readonly Color Paper = new Color(226, 212, 182, 255);
+        static readonly Color PaperWorn = new Color(206, 190, 158, 255);
+        static readonly Color PaperInk = new Color(44, 32, 26, 255);
+        static readonly Color NailHead = new Color(74, 68, 62, 255);
+
         void DrawBoard()
         {
             Scene.Draw(0f, Art.VW);
-            Raylib.DrawRectangleRec(new Rectangle(0f, 0f, Art.VW, Art.VH), new Color(16, 10, 14, 212));
-
-            Art.TextInked(Art.Display, "PAPER ON THE WALL", new Vector2(Art.VW * 0.5f, 120f), 76f,
-                new Color(252, 206, 120, 255), true, 1f, 5f);
-
-            // what the run is costing you so far, down the left
-            DrawBodyCount();
+            Raylib.DrawRectangleRec(new Rectangle(0f, 0f, Art.VW, Art.VH), new Color(16, 10, 14, 196));
 
             int n = BoardRows;
             var ys = BoardRowY(n);
+            float bx = 690f, bw = 1180f;
+            float by = 96f, bh = MathF.Min(Art.VH - 150f, 184f + n * 112f);
+
+            // the planks
+            Raylib.DrawRectangleRec(new Rectangle(bx - 22f, by - 22f, bw + 44f, bh + 44f), BoardFrame);
+            Raylib.DrawRectangleRec(new Rectangle(bx, by, bw, bh), BoardWood);
+            for (float py = by; py < by + bh; py += 54f)
+                Raylib.DrawRectangleRec(new Rectangle(bx, py, bw, 3f), BoardWoodDark);
+            for (int i = 0; i < 4; i++)
+                Raylib.DrawCircleV(new Vector2(bx + (i % 2 == 0 ? 16f : bw - 16f), by + (i < 2 ? 16f : bh - 16f)), 6f, NailHead);
+
+            Art.TextInked(Art.Display, "BOUNTY BOARD", new Vector2(bx + bw * 0.5f, by + 16f), 64f,
+                new Color(248, 226, 176, 255), true, 1f, 5f);
+            string run = _camp.VaneReady ? "he is out there now"
+                                         : _camp.SkullsTaken + " of " + Campaign.VaneAt + " skulls taken";
+            Art.Text(Art.Body, run, new Vector2(bx + bw * 0.5f, by + 86f), 28f, new Color(206, 176, 136, 230), true);
+
+            DrawBodyCount();
+
             for (int i = 0; i < n; i++)
             {
                 float y = ys[i];
                 bool on = i == _menuIndex;
-                if (on) Raylib.DrawRectangleRec(new Rectangle(740f, y - 14f, 1140f, 96f), new Color(250, 214, 140, 26));
 
-                string name, trade, tell;
+                string name, trade;
                 int skulls;
-                if (i == RestRow) { name = "Take the night"; trade = ""; tell = "it mends what it can, and every name here gets worse for it"; skulls = 0; }
-                else if (i == VaneRow) { name = "Mordecai Vane"; trade = "last light"; tell = "he has been paying for this the whole time"; skulls = 5; }
-                else { var c = _camp.Board[i]; name = c.Def.Name; trade = c.Def.Trade; tell = c.Def.Tell; skulls = c.Skulls; }
+                if (i == RestRow) { name = "TAKE THE NIGHT"; trade = "and let it mend what it can"; skulls = 0; }
+                else if (i == VaneRow) { name = "MORDECAI VANE"; trade = "last light"; skulls = 5; }
+                else { var c = _camp.Board[i]; name = c.Def.Name.ToUpperInvariant(); trade = c.Def.Trade; skulls = c.Skulls; }
 
-                Art.Text(Art.Display, name, new Vector2(780f, y), 46f,
-                    on ? new Color(252, 226, 164, 255) : new Color(200, 182, 160, 255));
-                Art.Text(Art.Body, trade, new Vector2(784f, y + 48f), 28f, new Color(170, 152, 134, 220));
-                if (!string.IsNullOrEmpty(tell))
-                    Art.Text(Art.Body, tell, new Vector2(1086f, y + 48f), 25f,
-                        new Color(196, 160, 116, on ? 230 : 150));
-                if (skulls > 0) HudBits.Skulls(1880f, y + 16f, skulls, 0, -1, 19f);
+                // the notice itself, nailed on a little crooked
+                var sheet = new Rectangle(bx + 92f, y - 8f, bw - 184f, 98f);
+                float tilt = (i % 2 == 0 ? 1f : -1f) * 0.35f;
+                Raylib.DrawRectanglePro(new Rectangle(sheet.X + 6f, sheet.Y + 8f, sheet.Width, sheet.Height),
+                    Vector2.Zero, tilt, new Color(20, 14, 12, 90));
+                Raylib.DrawRectanglePro(sheet, Vector2.Zero, tilt, on ? Paper : PaperWorn);
+                Raylib.DrawCircleV(new Vector2(sheet.X + 18f, sheet.Y + 16f), 5f, NailHead);
+                Raylib.DrawCircleV(new Vector2(sheet.X + sheet.Width - 18f, sheet.Y + 14f), 5f, NailHead);
+
+                if (i != RestRow)
+                    Art.Text(Art.Body, "WANTED", new Vector2(sheet.X + 34f, sheet.Y + 9f), 20f,
+                        new Color(126, 96, 72, 230));
+                Art.Text(Art.Display, name, new Vector2(sheet.X + 34f, sheet.Y + 28f), 40f,
+                    on ? PaperInk : new Color(72, 56, 46, 255));
+                Art.Text(Art.Body, trade, new Vector2(sheet.X + 36f, sheet.Y + 68f), 23f,
+                    new Color(104, 84, 68, 220));
+
+                // what he is worth, in skulls, over on the right of his own paper
+                if (skulls > 0)
+                    HudBits.Skulls(sheet.X + sheet.Width - 34f, sheet.Y + 48f, skulls, 0, -1, 17f);
             }
 
-            string run = _camp.SkullsTaken + " of " + Campaign.VaneAt + " skulls taken";
-            Art.Text(Art.Body, _camp.VaneReady ? "he is out there now" : run,
-                new Vector2(Art.VW * 0.5f, 212f), 32f, new Color(226, 198, 150, 220), true);
-
             if (!string.IsNullOrEmpty(_boardNote))
-                Art.Text(Art.Body, _boardNote, new Vector2(Art.VW * 0.5f, Art.VH - 118f), 30f,
-                    new Color(206, 180, 150, 200), true);
+                Art.Text(Art.Body, _boardNote, new Vector2(Art.VW * 0.5f, Art.VH - 108f), 30f,
+                    new Color(206, 180, 150, 210), true);
 
-            Art.Text(Art.Body, "click a line, or arrow keys", new Vector2(Art.VW * 0.5f, Art.VH - 70f), 28f,
+            Art.Text(Art.Body, "click a notice, or arrow keys", new Vector2(Art.VW * 0.5f, Art.VH - 62f), 28f,
                 new Color(176, 158, 140, 170), true);
         }
 
@@ -1385,7 +1428,9 @@ namespace LLD
         }
 
         // ---------- settings ----------
-        const int SetCount = 7;
+        // Blood and the update check are gone from here: the gore level belongs in the
+        // test range and nowhere else, and a game that updates itself should just do it.
+        const int SetCount = 6;
 
         void UpdateSettings(float dt)
         {
@@ -1429,18 +1474,13 @@ namespace LLD
                     Sfx.Volume = S.Sfx;
                     break;
                 case 4:
-                    if (step != 0 || click) { S.Gore = (GoreLevel)(((int)S.Gore + (step == -1 ? 2 : 1)) % 3); Gore.Level = S.Gore; }
+                    // how far the gun swings for how far the mouse moves
+                    if (held && onBar) S.Sens = Settings.SensMin + slider * (Settings.SensMax - Settings.SensMin);
+                    if (step != 0) S.Sens = S.Sens + step * 0.1f;
+                    S.Sens = Math.Clamp(S.Sens, Settings.SensMin, Settings.SensMax);
                     break;
                 case 5:
                     if (step != 0 || click) S.ShowZones = !S.ShowZones;
-                    break;
-                case 6:
-                    if (step != 0 || click)
-                    {
-                        S.AutoUpdate = !S.AutoUpdate;
-                        if (S.AutoUpdate && Updater.State == UpdateState.Off) Updater.CheckInBackground(S.UpdateUrl);
-                        else if (!S.AutoUpdate) Updater.State = UpdateState.Off;
-                    }
                     break;
             }
 
@@ -1451,7 +1491,7 @@ namespace LLD
         {
             Sfx.Master = S.Master;
             Sfx.Volume = S.Sfx;
-            Gore.Level = S.Gore;
+            Gore.Level = GoreLevel.Full;
             S.Save();
         }
 
@@ -1851,7 +1891,7 @@ namespace LLD
             Raylib.DrawRectangleRec(new Rectangle(0f, 0f, Art.VW, Art.VH), new Color(16, 10, 14, 215));
             Art.TextInked(Art.Display, "SETTINGS", new Vector2(Art.VW * 0.5f, 140f), 96f, new Color(252, 214, 140, 255), true, 1f, 5f);
 
-            string[] labels = { "Fullscreen", "V-Sync", "Master volume", "Sound effects", "Blood", "Show hit zones", "Check for updates" };
+            string[] labels = { "Fullscreen", "V-Sync", "Master volume", "Sound effects", "Mouse", "Show hit zones" };
             for (int i = 0; i < SetCount; i++)
             {
                 float y = 300f + i * 78f;
@@ -1867,9 +1907,9 @@ namespace LLD
                     case 1: Value(S.VSync ? "ON" : "OFF", vx, y, on); break;
                     case 2: Bar(S.Master, vx, y, on); break;
                     case 3: Bar(S.Sfx, vx, y, on); break;
-                    case 4: Value(S.Gore switch { GoreLevel.Off => "OFF", GoreLevel.Light => "LIGHT", _ => "FULL" }, vx, y, on); break;
+                    case 4: Bar((S.Sens - Settings.SensMin) / (Settings.SensMax - Settings.SensMin), vx, y, on, $"{S.Sens:0.0}x"); break;
                     case 5: Value(S.ShowZones ? "ON" : "OFF", vx, y, on); break;
-                    case 6: Value(S.AutoUpdate ? "ON" : "OFF", vx, y, on); break;
+
                 }
             }
 
@@ -3271,13 +3311,12 @@ namespace LLD
             {
                 var cp = new Campaign();
                 cp.Take(cp.Board[0]);
+                // One life. Losing the only go you get ends the run there and then.
                 bool a = cp.LostATry(Hurt.GunArm);
-                bool b = cp.LostATry(Hurt.GunArm);
                 int stacked = cp.Carried[Hurt.GunArm];
-                bool c = cp.LostATry(Hurt.Leg);
-                bool ok = !a && !b && c && cp.Finished && !cp.Won && stacked >= 3;
-                Console.WriteLine($"[check] three goes and no more: ended on the third={c}, run over={cp.Finished}," +
-                    $" arm stacked to {stacked} by the second" + (ok ? " - ok" : "  FAIL"));
+                bool ok = a && cp.Finished && !cp.Won && stacked >= 2 && Campaign.Tries == 1;
+                Console.WriteLine($"[check] one life and no more: the run ended on the first loss={a}," +
+                    $" run over={cp.Finished}, what he put in you counted {stacked}" + (ok ? " - ok" : "  FAIL"));
             }
 
             // A scar never comes off. Rest all you like; it stops at one and stays there,
