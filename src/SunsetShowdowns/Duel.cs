@@ -101,15 +101,53 @@ namespace LLD
         public bool Drawn;
         const float DrawTrigger = 10f;
 
-        public Duel(CharDef def, Settings s)
+        // ---------- the run ----------
+
+        /// What the player is carrying into this fight, scars and all. Empty outside a run.
+        public Wounds Hurts = new Wounds();
+
+        /// Where he took the worst of it this fight, which is the scar he leaves with.
+        public Hurt PlayerHurt = Hurt.None;
+
+        /// No call, no countdown: the fight is already running when the screen comes up.
+        public bool Ambush;
+
+        /// Down to your last go, he has watched you take two, and he is half a beat slow
+        /// out of the leather for it. Set to 0 to take the mercy back out.
+        public float Cocky;
+
+        bool _aiWaiting;        // a mirror, holding until you move
+        float _aiPatience;      // ...but not forever
+        float _jumpAt = -1f;    // when a man with no nerve goes before the word
+        bool _holdoutSpent;
+        float _sermonT;
+        int _sermonLine;
+
+        static readonly string[] Sermon =
+        {
+            "the wages of sin is death",
+            "and I looked, and behold a pale horse",
+            "he that is unjust, let him be unjust still",
+            "there is no peace, saith my God, to the wicked",
+            "the night is far spent, the day is at hand",
+            "dust thou art, and unto dust shalt thou return",
+        };
+
+        public Duel(CharDef def, Settings s, Wounds hurts = null, bool ambush = false)
         {
             Def = def;
             _s = s;
+            Hurts = hurts ?? new Wounds();
+            Ambush = ambush;
             Player = new Fighter(s.Look.ToCharDef("You"), Scene.PlayerStand, 1);
             Enemy = new Fighter(def, Scene.EnemyStand, -1);
-            Headline = def.Name.ToUpperInvariant();
-            Subline = "";
-            _phaseT = 2.0f;
+            Enemy.NoFlinch = def.NoFlinch;
+            // a leg he has been shot in before is a leg he still stands badly on
+            Player.Crouch = Hurts[Hurt.Leg] * 4.5f;
+            Headline = ambush ? "AMBUSH" : def.Name.ToUpperInvariant();
+            Subline = ambush ? "\"you are a hard man to find, mister-\"" : def.Trade;
+            _phaseT = ambush ? 1.5f : 2.0f;
+            if (def.FalseStart && Rng.Chance(0.45f)) _jumpAt = Rng.F(0.25f, 0.8f);
         }
 
         /// <summary>
@@ -194,10 +232,17 @@ namespace LLD
                     _phaseT -= rdt;
                     if (_phaseT <= 0f)
                     {
+                        // An ambush does not get a call. There is no READY, there is no
+                        // countdown and nobody says DRAW - the line he was speaking stops in
+                        // the middle and the fight is already going.
+                        if (Ambush) { GoLive(mouse, "", Rng.F(0.30f, 0.46f)); break; }
+
                         Phase = Phase.Count;
-                        _countdown = Rng.F(1.1f, 2.9f);
+                        // a preacher talks over the word, so the word can come a long way in
+                        _countdown = Def.Sermon ? Rng.F(1.6f, 5.4f) : Rng.F(1.1f, 2.9f);
                         Headline = "READY";
-                        Subline = "";
+                        Subline = Def.Sermon ? Sermon[_sermonLine = Rng.I(0, Sermon.Length)] : "";
+                        _sermonT = 1.1f;
                         _readyArmed = false;
                         _aimAnchored = false;
                         Sfx.Play("ready", 0.7f);
@@ -228,20 +273,34 @@ namespace LLD
                             break;
                         }
                         _countdown -= rdt;
+
+                        // the sermon runs on, and the word is somewhere inside it
+                        if (Def.Sermon)
+                        {
+                            _sermonT -= rdt;
+                            if (_sermonT <= 0f)
+                            {
+                                _sermonT = Rng.F(1.0f, 1.5f);
+                                _sermonLine = (_sermonLine + 1) % Sermon.Length;
+                                Subline = Sermon[_sermonLine];
+                            }
+                        }
+
+                        // A man whose nerve goes first. He jumps the call, which ends the
+                        // count - so you are not disqualified for going with him - and he
+                        // arrives rushed, with his gun half up and a long fumble in front
+                        // of him. Hold, and he has handed you the fight.
+                        if (_jumpAt > 0f && _countdown <= _jumpAt)
+                        {
+                            GoLive(mouse, "HE DREW EARLY", Rng.F(0.62f, 0.92f));
+                            Subline = "take your time";
+                            _jumpAt = -1f;
+                            break;
+                        }
+
                         if (moved) { Foul("YOU DREW EARLY"); break; }
                         if (firePressed) { Foul("YOU FIRED EARLY"); break; }
-                        if (_countdown <= 0f)
-                        {
-                            Phase = Phase.Live;
-                            AnchorAim(mouse);
-                            Headline = "DRAW!";
-                            Subline = "";
-                            _phaseT = 0f;
-                            _aiNext = Rng.F(Def.ReactMin, Def.ReactMax);
-                            _aiDrawn = false;
-                            Sfx.Play("cue", 0.85f);
-                            Sfx.Play("holster", 0.8f, 0.9f);
-                        }
+                        if (_countdown <= 0f) GoLive(mouse, "DRAW!", Rng.F(Def.ReactMin, Def.ReactMax));
                         break;
                     }
 
@@ -288,10 +347,12 @@ namespace LLD
             _fireCd = MathF.Max(0f, _fireCd - dt);
 
             // the hand reaches out along the aim point and the wrist lines the barrel up on it,
-            // so the shot goes where you are pointing
-            Mine.Arm.AimAt = mouse;
-            Vector2 armTarget = Mine.Arm.AimHandFor(mouse);
-            Mine.Update(dt, armTarget, Fighter.ArmWeight, holstered || !_drawnOut || Mine.Dead);
+            // so the shot goes where you are pointing - give or take whatever is wrong with you
+            Vector2 aimPoint = mouse + Wander(rdt);
+            Mine.Arm.AimAt = aimPoint;
+            Vector2 armTarget = Mine.Arm.AimHandFor(aimPoint);
+            Mine.Update(dt, armTarget, Fighter.ArmWeight * (1f + Hurts[Hurt.GunArm] * 0.22f),
+                holstered || !_drawnOut || Mine.Dead);
 
             if (IsNet)
             {
@@ -374,6 +435,24 @@ namespace LLD
             return 0;
         }
 
+        /// <summary>The moment it starts, however it started.</summary>
+        void GoLive(Vector2 mouse, string headline, float react)
+        {
+            Phase = Phase.Live;
+            AnchorAim(mouse);
+            Headline = headline;
+            Subline = "";
+            _phaseT = 0f;
+            _aiDrawn = false;
+            _aiNext = react + Cocky;
+            // A mirror does not answer the call, he answers YOUR draw, so there is no
+            // waiting him out. He will not stand there all evening either.
+            _aiWaiting = Def.Mirror;
+            _aiPatience = Rng.F(2.6f, 3.8f);
+            Sfx.Play("cue", 0.85f);
+            Sfx.Play("holster", 0.8f, 0.9f);
+        }
+
         void Foul(string why)
         {
             Phase = Phase.Foul;
@@ -398,9 +477,38 @@ namespace LLD
             if (won) Sfx.Play("win", 0.8f);
         }
 
+        float _wanderT;
+
+        /// <summary>
+        /// How far off your own aim is, and it is not the gun. A shot arm will not hold the
+        /// line, a leg you cannot stand on puts a slow sway through everything above it, and
+        /// a gut wound is steady at first and worse the longer you are out there - which is
+        /// exactly why Gantry, who has all day, is the man you least want to meet carrying one.
+        /// Nothing here is a new rule: the barrel still points where the hand points, and the
+        /// bullet still goes where the barrel points.
+        /// </summary>
+        Vector2 Wander(float rdt)
+        {
+            int arm = Hurts[Hurt.GunArm], leg = Hurts[Hurt.Leg], gut = Hurts[Hurt.Gut], head = Hurts[Hurt.Head];
+            if (arm + leg + gut + head == 0) return Vector2.Zero;
+            _wanderT += rdt;
+
+            float shake = arm * 5.5f;
+            float sway = leg * 4.0f;
+            float sick = gut * 3.0f * MathF.Min(1f, _liveT / 9f);
+            // a graze across the scalp: everything swims for a moment after the call, then clears
+            float blur = head * 16f * MathF.Max(0f, 1f - _phaseT * 1.6f) * (Phase == Phase.Live ? 1f : 0f);
+
+            float a = _wanderT * 9.3f, b = _wanderT * 2.1f, c = _wanderT * 5.7f;
+            return new Vector2(
+                MathF.Sin(a) * shake + MathF.Sin(b * 0.8f) * sway + MathF.Sin(c * 0.6f) * (sick + blur),
+                MathF.Cos(a * 1.17f) * shake + MathF.Cos(b) * sway + MathF.Cos(c * 0.9f) * (sick + blur));
+        }
+
         void StartReload()
         {
-            ReloadLeft = ReloadTime;
+            // the hand that works the cylinder is the hand that has been shot
+            ReloadLeft = ReloadTime * (1f + Hurts[Hurt.GunArm] * 0.30f);
             for (int i = 0; i < 6; i++) Gore.Casing(Player.Arm.Hand, Player.Face);
             Sfx.Play("holster", 0.7f, 0.85f);
         }
@@ -450,9 +558,14 @@ namespace LLD
         }
 
         void Fire(Fighter shooter, Fighter target, float power)
+            => FireFrom(shooter, target, shooter.Arm.Muzzle, shooter.Arm.BarrelDir, power);
+
+        /// <summary>
+        /// A shot, from a stated place along a stated line. Nearly always that is the muzzle
+        /// pointing where the barrel points; a gun palmed in a sleeve is the exception.
+        /// </summary>
+        void FireFrom(Fighter shooter, Fighter target, Vector2 from, Vector2 dir, float power)
         {
-            Vector2 from = shooter.Arm.Muzzle;
-            Vector2 dir = shooter.Arm.BarrelDir;
             Flash(shooter, from, dir, power);
 
             const float len = 2800f;
@@ -497,6 +610,19 @@ namespace LLD
                 Hits++;
                 _lastHit = rep.Describe();
             }
+            // what he put in you is what you walk away carrying, so it is worth knowing
+            // where the worst of it landed
+            else if (target == Player)
+            {
+                Hurt h = zone switch
+                {
+                    Zone.Head => Hurt.Head,
+                    Zone.Leg => Hurt.Leg,
+                    Zone.Arm or Zone.Hand => Hurt.GunArm,
+                    _ => Hurt.Gut,
+                };
+                if (PlayerHurt == Hurt.None || h == Hurt.Head) PlayerHurt = h;
+            }
             if (big) _slow = 1.0f;
         }
 
@@ -504,6 +630,17 @@ namespace LLD
         void UpdateAi(float dt)
         {
             if (Enemy.Dead || Player.Dead || Enemy.StunLeft > 0f) return;
+
+            // A mirror's clock does not start on the call. It starts when your hand moves,
+            // so standing still buys you nothing at all against him - though he will not
+            // wait out the whole evening for you.
+            if (_aiWaiting)
+            {
+                _aiPatience -= dt;
+                if (_drawnOut || _aiPatience <= 0f) _aiWaiting = false;
+                else return;
+            }
+
             _aiNext -= dt;
 
             if (!_aiDrawn)
@@ -514,6 +651,20 @@ namespace LLD
                     PickAim();
                     _aiNext = 0f;
                 }
+                return;
+            }
+
+            // Down is not done. There is one more in a sleeve and it goes off from the floor.
+            if (Def.Holdout && !_holdoutSpent && Enemy.Down && !Enemy.Dead && _aiNext <= 0f)
+            {
+                _holdoutSpent = true;
+                _aiNext = 1.4f;
+                Vector2 at = Player.L2W(new Vector2(0f, -280f));
+                Vector2 from = Enemy.Arm.Hand;
+                Vector2 d = Vector2.Normalize(at - from + new Vector2(0.001f, 0f));
+                float sp = Def.AimError * 2.4f;
+                d = Vector2.Normalize(d + new Vector2(Rng.F(-sp, sp), Rng.F(-sp, sp)));
+                FireFrom(Enemy, Player, from, d, 0.7f);
                 return;
             }
 
@@ -535,15 +686,50 @@ namespace LLD
             }
         }
 
+        Vector2 Spot(Hurt h) => h switch
+        {
+            Hurt.Head => Player.L2W(new Vector2(4f, -396f)),
+            Hurt.Leg => Player.L2W(new Vector2(0f, -120f)),
+            Hurt.GunArm => Player.Arm.Elbow,
+            _ => Player.L2W(new Vector2(0f, -280f)),
+        };
+
         void PickAim()
         {
             _aiAimSet = 0f;
-            float r = Rng.F(0f, 1f);
             Vector2 aimAt;
-            if (r < 0.18f) aimAt = Player.L2W(new Vector2(4f, -396f));        // head
-            else if (r < 0.74f) aimAt = Player.L2W(new Vector2(0f, -280f));   // chest
-            else if (r < 0.88f) aimAt = Player.L2W(new Vector2(0f, -120f));   // legs
-            else aimAt = Player.Arm.Elbow;                                    // gun arm
+            switch (Def.Aim)
+            {
+                case AimAt.Centre:
+                    // the middle of you, every time, and he has all day to find it
+                    aimAt = Spot(Hurt.Gut);
+                    break;
+
+                case AimAt.Arm:
+                    // she is not trying to kill you. She is trying to take the gun off you,
+                    // which under a run that carries its wounds is arguably worse.
+                    aimAt = Rng.Chance(0.78f) ? Spot(Hurt.GunArm) : Spot(Hurt.Gut);
+                    break;
+
+                case AimAt.Worst:
+                    // he reads what the rest of them left of you and finishes it
+                    {
+                        int worst = Hurts.Worst(out Hurt where);
+                        aimAt = worst > 0 && Rng.Chance(0.7f) ? Spot(where)
+                              : Rng.Chance(0.3f) ? Spot(Hurt.Head) : Spot(Hurt.Gut);
+                    }
+                    break;
+
+                default:
+                    {
+                        float r = Rng.F(0f, 1f);
+                        if (r < 0.18f) aimAt = Spot(Hurt.Head);
+                        else if (r < 0.74f) aimAt = Spot(Hurt.Gut);
+                        else if (r < 0.88f) aimAt = Spot(Hurt.Leg);
+                        else aimAt = Spot(Hurt.GunArm);
+                    }
+                    break;
+            }
 
             // scatter the point of aim, then solve for the hand position that actually points there
             float spread = Def.AimError * (1f + Enemy.Kneel * 1.5f + Enemy.Impairment * 2.2f);

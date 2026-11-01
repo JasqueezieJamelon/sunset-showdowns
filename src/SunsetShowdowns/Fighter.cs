@@ -47,6 +47,9 @@ namespace LLD
         public bool HatOn = true;
         public bool Disarmed;
 
+        /// A hit that does not kill him does not stagger him either. See ApplyShot.
+        public bool NoFlinch;
+
         public ArmRig Arm = new ArmRig();
         public List<Wound> Wounds = new();
         public Ragdoll Doll = new Ragdoll();
@@ -549,7 +552,11 @@ namespace LLD
             Shock += rep.Shock;
             BleedRate += rep.Bleed;
             Crippled |= rep.Cripple;
-            StunLeft = MathF.Max(StunLeft, Math.Clamp(rep.Shock / 90f, 0.12f, 1.4f));
+            // A hit that does not kill a man normally staggers him, and that stagger is the
+            // second you use to aim properly. One man in the roster does not give it to you:
+            // a wounding shot on him is a wasted shot and he is still coming up.
+            if (!NoFlinch)
+                StunLeft = MathF.Max(StunLeft, Math.Clamp(rep.Shock / 90f, 0.12f, 1.4f));
 
             Flinch = 1f;
             FlinchDir = MathF.Sign(worldDir.X) == 0 ? Face : MathF.Sign(worldDir.X);
