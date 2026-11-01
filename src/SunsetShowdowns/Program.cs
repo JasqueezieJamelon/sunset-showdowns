@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System;
 using System.IO;
 using System.Linq;
@@ -7,7 +8,7 @@ using Raylib_cs;
 
 namespace LLD
 {
-    public enum Screen { Title, Play, Board, Settings, RunOver, Paused, MpMenu, MpJoin, MpLobby, MpOver, Training, TrainPaused, Name, Customise }
+    public enum Screen { Title, Play, Board, Settings, RunOver, Paused, MpMenu, MpJoin, MpLobby, MpOver, Training, TrainPaused, Name, Customise, Lab }
 
     public static class Program
     {
@@ -245,6 +246,7 @@ namespace LLD
                 case Screen.Settings: UpdateSettings(dt); break;
                 case Screen.Paused: UpdatePaused(); break;
                 case Screen.Board: UpdateBoard(); break;
+                case Screen.Lab: UpdateLab(dt); break;
                 case Screen.RunOver: UpdateRunOver(); break;
                 case Screen.MpMenu: UpdateMpMenu(); break;
                 case Screen.Name: UpdateName(); break;
@@ -339,8 +341,223 @@ namespace LLD
         // ---------- title ----------
         readonly string[] _mainItems = { "Begin a run", "Multiplayer", "Training", "Customise", "Settings", "Quit" };
 
+        // ---------- the console, and the room behind it ----------
+
+        readonly DevConsole _dev = new DevConsole();
+        Duel _lab;
+        int _labMan;
+        readonly List<DevButton> _labKit = new List<DevButton>();
+
+        /// <summary>
+        /// Runs a typed line. Unknown words are answered, so it is obvious the thing is
+        /// listening - but it never volunteers what it knows unless asked.
+        /// </summary>
+        void DevRun(string cmd)
+        {
+            switch (cmd.ToLowerInvariant())
+            {
+                case "":
+                    break;
+                case "testing":
+                    _dev.Open = false;
+                    StartLab();
+                    break;
+                case "help":
+                    _dev.Say("testing   a man who does not shoot back");
+                    _dev.Say("clear     wipe this");
+                    _dev.Say("close     put it away");
+                    break;
+                case "clear":
+                    _dev.Wipe();
+                    break;
+                case "close":
+                case "exit":
+                case "quit":
+                    _dev.Open = false;
+                    break;
+                default:
+                    _dev.Say("no such thing: " + cmd);
+                    break;
+            }
+        }
+
+        void UpdateDevConsole(float dt)
+        {
+            if (Raylib.IsKeyPressed(KeyboardKey.Escape) || Raylib.IsKeyPressed(KeyboardKey.Grave))
+            {
+                _dev.Open = false;
+                return;
+            }
+            if (_dev.Type(dt)) DevRun(_dev.Take());
+        }
+
+        void DrawDevConsole()
+        {
+            const float h = 420f;
+            Raylib.DrawRectangleRec(new Rectangle(0f, 0f, Art.VW, h), new Color(10, 8, 12, 232));
+            Raylib.DrawRectangleRec(new Rectangle(0f, h - 3f, Art.VW, 3f), new Color(120, 180, 140, 180));
+
+            var ink = new Color(150, 214, 170, 255);
+            float y = h - 108f;
+            for (int i = _dev.Log.Count - 1; i >= 0 && y > 18f; i--, y -= 30f)
+                Art.Text(Art.Body, _dev.Log[i], new Vector2(34f, y), 26f, new Color(126, 176, 142, 230));
+
+            string line = "> " + _dev.Input;
+            Art.Text(Art.Body, line, new Vector2(34f, h - 62f), 30f, ink);
+            if ((int)(_dev.Caret * 2f) % 2 == 0)
+            {
+                float w = Art.Measure(Art.Body, line, 30f).X;
+                Raylib.DrawRectangleRec(new Rectangle(38f + w, h - 60f, 13f, 28f), ink);
+            }
+        }
+
+        // ---------- the test range ----------
+
+        void StartLab()
+        {
+            Gore.Reset();
+            _lab = new Duel(Roster.All[_labMan], S) { Sandbox = true };
+            BuildLabKit();
+            ResetCamera();
+            _screen = Screen.Lab;
+        }
+
+        Fighter Dummy => _lab.Enemy;
+
+        void BuildLabKit()
+        {
+            _labKit.Clear();
+            void B(string label, KeyboardKey k, string name, Action act)
+                => _labKit.Add(new DevButton { Label = label, Key = k, KeyName = name, Do = act });
+
+            B("Patch them up", KeyboardKey.One, "1", () => Dummy.Patch());
+            B("Stand them up", KeyboardKey.Two, "2", () => Dummy.StandUp());
+            B("Knock them down", KeyboardKey.Three, "3",
+                () => { if (!Dummy.Down) Dummy.Collapse(new Vector2(-1f, -0.3f), 1.2f); });
+            B("Kill them", KeyboardKey.Four, "4", () => { Dummy.Blood = 0f; Dummy.Killed = true; });
+            B("Take the head off", KeyboardKey.Five, "5", () =>
+            {
+                Dummy.HeadDamage = 2;
+                Dummy.HeadWoundAngle = 0.5f;
+                Vector2 skull = Dummy.L2W(new Vector2(4f, -398f));
+                Vector2 brain = Dummy.L2W(new Vector2(8f, -404f));
+                Vector2 d = Vector2.Normalize(new Vector2(-1f, -0.25f));
+                Dummy.TearFace(Dummy.HeadWoundAngle, 2, d, skull);
+                Dummy.KnockHat(d);
+                Gore.HeadBurst(skull, 34f * Dummy.Scale, brain, d, Dummy.P.Skin);
+                Dummy.Killed = true;
+                Dummy.Blood = 0f;
+            });
+            B("Disarm them", KeyboardKey.Six, "6", () => { if (Dummy.Arm.HasGun) Dummy.Drop(); });
+            B("Clear the mess", KeyboardKey.Seven, "7", () => Gore.Reset());
+            B("Next fighter", KeyboardKey.Eight, "8", () =>
+            {
+                _labMan = (_labMan + 1) % Roster.All.Length;
+                StartLab();
+            });
+            B("Gore: " + Gore.Level, KeyboardKey.Nine, "9", () =>
+            {
+                Gore.Level = Gore.Level switch
+                {
+                    GoreLevel.Full => GoreLevel.Light,
+                    GoreLevel.Light => GoreLevel.Off,
+                    _ => GoreLevel.Full,
+                };
+                BuildLabKit();
+            });
+            B("Scar me: " + (_labScar == Hurt.None ? "none" : Wounds.Name(_labScar)), KeyboardKey.Zero, "0", () =>
+            {
+                _labScar = _labScar switch
+                {
+                    Hurt.None => Hurt.GunArm,
+                    Hurt.GunArm => Hurt.Leg,
+                    Hurt.Leg => Hurt.Gut,
+                    Hurt.Gut => Hurt.Head,
+                    _ => Hurt.None,
+                };
+                _lab.Hurts.Clear();
+                if (_labScar != Hurt.None) _lab.Hurts.Set(_labScar, 3);
+                _lab.Player.Crouch = _lab.Hurts[Hurt.Leg] * 4.5f;
+                BuildLabKit();
+            });
+            B("Fill the cylinder", KeyboardKey.R, "R", () => _lab.Ammo = Duel.MaxAmmo);
+
+            // laid out down the left, out of the way of the man on the right
+            for (int i = 0; i < _labKit.Count; i++)
+                _labKit[i].Box = new Rectangle(34f, 150f + i * 62f, 390f, 52f);
+        }
+
+        Hurt _labScar = Hurt.None;
+
+        void UpdateLab(float dt)
+        {
+            if (Raylib.IsKeyPressed(KeyboardKey.Escape)) { _screen = Screen.Title; _menuIndex = 0; _lab = null; return; }
+
+            foreach (var b in _labKit)
+            {
+                bool hit = Raylib.IsMouseButtonPressed(MouseButton.Left) &&
+                           Raylib.CheckCollisionPointRec(_vmouse, b.Box);
+                if (hit || Raylib.IsKeyPressed(b.Key))
+                {
+                    Sfx.Play("click", 0.6f);
+                    b.Do();
+                    return;        // the list can be rebuilt underneath us
+                }
+            }
+
+            // the cursor is the aim: clicking off the panel is a shot
+            bool onPanel = _vmouse.X < 460f;
+            _lab.Update(dt, _wmouse, _firePressed && !onPanel, _reloadPressed);
+            _lab.Interest(out float lo, out float hi);
+            CameraTo(lo, hi, dt);
+        }
+
+        void DrawLab()
+        {
+            Raylib.BeginMode2D(_cam);
+            Vector2 va = Raylib.GetScreenToWorld2D(Vector2.Zero, _cam);
+            Vector2 vb = Raylib.GetScreenToWorld2D(new Vector2(Art.VW, Art.VH), _cam);
+            _lab.DrawWorld(va.X, vb.X);
+            Raylib.EndMode2D();
+
+            Raylib.DrawRectangleRec(new Rectangle(18f, 112f, 422f, 52f + _labKit.Count * 62f),
+                new Color(12, 10, 14, 196));
+            Art.Text(Art.Display, "THE RANGE", new Vector2(34f, 118f), 36f, new Color(150, 214, 170, 255));
+
+            foreach (var b in _labKit)
+            {
+                bool over = Raylib.CheckCollisionPointRec(_vmouse, b.Box);
+                Raylib.DrawRectangleRec(b.Box, over ? new Color(60, 92, 70, 230) : new Color(28, 34, 30, 220));
+                Raylib.DrawRectangleLinesEx(b.Box, 2f, new Color(104, 150, 118, 200));
+                Art.Text(Art.Body, b.Label, new Vector2(b.Box.X + 16f, b.Box.Y + 11f), 27f,
+                    over ? new Color(224, 246, 230, 255) : new Color(186, 212, 194, 255));
+                float kw = Art.Measure(Art.Body, b.KeyName, 24f).X;
+                Art.Text(Art.Body, b.KeyName, new Vector2(b.Box.X + b.Box.Width - 16f - kw, b.Box.Y + 14f), 24f,
+                    new Color(132, 180, 146, 210));
+            }
+
+            var f = Dummy;
+            string state = f.Dead ? "dead" : f.Down ? "down" : "upright";
+            Art.Text(Art.Body, $"{f.Def.Name} - {state}, blood {f.Blood:0}, head {f.HeadDamage}, " +
+                               $"pieces {f.FlapCount}, ammo {_lab.Ammo}",
+                new Vector2(34f, 112f + 56f + _labKit.Count * 62f), 25f, new Color(170, 196, 178, 220));
+
+            DrawCursor();
+        }
+
         void UpdateTitle(float dt)
         {
+            // Nothing says this is here and nothing ever will. It is the tilde key, from the
+            // main menu, and that is the whole of the way in.
+            if (Raylib.IsKeyPressed(KeyboardKey.Grave))
+            {
+                _dev.Open = true;
+                _dev.Input = "";
+                Raylib.GetCharPressed();     // swallow the key that opened it
+                return;
+            }
+            if (_dev.Open) { UpdateDevConsole(dt); return; }
+
             // an update is offered, never forced
             if (Updater.State == UpdateState.Available && Raylib.IsKeyPressed(KeyboardKey.U))
             {
@@ -1198,9 +1415,10 @@ namespace LLD
 
             switch (_screen)
             {
-                case Screen.Title: DrawTitle(); break;
+                case Screen.Title: DrawTitle(); if (_dev.Open) DrawDevConsole(); break;
                 case Screen.Settings: DrawSettings(); break;
                 case Screen.Board: DrawBoard(); break;
+                case Screen.Lab: DrawLab(); break;
                 case Screen.RunOver: DrawRunOver(); break;
                 case Screen.MpMenu: DrawMpMenu(); break;
                 case Screen.Name: DrawName(); break;
@@ -1849,9 +2067,10 @@ namespace LLD
                 Raylib.ClearBackground(new Color(18, 12, 16, 255));
                 switch (_screen)
                 {
-                    case Screen.Title: DrawTitle(); break;
+                    case Screen.Title: DrawTitle(); if (_dev.Open) DrawDevConsole(); break;
                     case Screen.Settings: DrawSettings(); break;
                     case Screen.Board: DrawBoard(); break;
+                    case Screen.Lab: DrawLab(); break;
                 case Screen.RunOver: DrawRunOver(); break;
                     case Screen.MpMenu: DrawMpMenu(); break;
                 case Screen.Name: DrawName(); break;
@@ -2515,6 +2734,62 @@ namespace LLD
                 while (t < 12f && !_duel.Finished) { _duel.Update(dt, aim2, false, false); t += dt; }
                 Console.WriteLine($"[check] downed-not-dead round resolved={_duel.Finished} after {t:0.0}s " +
                                   $"enemyDown={_duel.Enemy.Down} enemyDead={_duel.Enemy.Dead} blood={_duel.Enemy.Blood:0}");
+            }
+
+            // The console is only reachable on the tilde key from the main menu, and the man
+            // on the range genuinely does not fight back - stand in front of him with your
+            // hands down for a full minute and nothing happens to you. Both are easy to
+            // break by accident later: a stray hint on the title screen, or the sandbox
+            // flag going missing and the test dummy quietly shooting the tester.
+            {
+                _dev.Open = false;
+                _screen = Screen.Title;
+                _dev.Say("unknown");
+                DevRun("testing");
+                bool opened = _screen == Screen.Lab && _lab != null && _lab.Sandbox;
+
+                float blood0 = _lab.Player.Blood;
+                Vector2 idle = _lab.HolsterPoint;
+                for (float t = 0f; t < 60f; t += dt) _lab.Update(dt, idle, false, false);
+                bool untouched = _lab.Player.Blood >= blood0 - 0.01f && !_lab.Finished;
+
+                // and every button does something without falling over
+                int worked = 0;
+                // a copy, because some of these rebuild the panel they are listed on
+                foreach (var b in new List<DevButton>(_labKit)) { b.Do(); worked++; }
+                for (float t = 0f; t < 1f; t += dt) _lab.Update(dt, idle, false, false);
+
+                bool ok = opened && untouched && worked == _labKit.Count;
+                Console.WriteLine($"[check] the range: console opened it={opened}," +
+                    $" stood in front of him for a minute and took {blood0 - _lab.Player.Blood:0.0} blood," +
+                    $" {worked} buttons all ran" + (ok ? " - ok" : "  FAIL"));
+
+                // the console itself, mid-sentence, over the title
+                _screen = Screen.Title;
+                _dev.Wipe();
+                _dev.Say("no such thing: godmode");
+                _dev.Open = true;
+                _dev.Input = "testing";
+                _dev.Caret = 0f;
+                Shot("30-console");
+
+                // and the range, with a man who has been worked on
+                _dev.Open = false;
+                StartLab();
+                _vmouse = new Vector2(1400f, 520f);
+                _wmouse = _vmouse;
+                for (float t = 0f; t < 0.6f; t += dt) UpdateLab(dt);
+                Dummy.HeadDamage = 1;
+                Dummy.HeadWoundAngle = 0.3f;
+                Dummy.TearFace(0.3f, 1, new Vector2(-1f, -0.3f), Dummy.HeadCenter);
+                for (float t = 0f; t < 1.2f; t += dt) UpdateLab(dt);
+                Shot("31-range");
+                _screen = Screen.Title;
+                _lab = null;
+                // the Gore button cycled the level on its way past; put it back or every
+                // check after this one is quietly measuring a thinner shower
+                Gore.Level = GoreLevel.Full;
+                Gore.Reset();
             }
 
             // What leaves a head has to leave from where that thing is IN a head. The brain

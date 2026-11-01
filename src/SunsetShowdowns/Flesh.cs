@@ -154,6 +154,50 @@ namespace LLD
 
         public Vector2 FlapTip(int i) => _flaps[i].Tip;
 
+        // ---------- the sandbox ----------
+        //
+        // Nothing in the game calls either of these. They exist so a man can be put back on
+        // his feet and taken apart again without restarting anything, which is the whole
+        // point of having somewhere to test.
+
+        /// <summary>Back on his feet with whatever damage he is carrying.</summary>
+        public void StandUp()
+        {
+            Killed = false;
+            Collapsed = false;
+            DeadTime = 0f;
+            Shock = 0f;
+            StunLeft = 0f;
+            Flinch = 0f;
+            Kneel = 0f;
+            Crippled = false;
+            Blood = MathF.Max(Blood, Anatomy.BloodFull * 0.5f);
+            BleedRate = MathF.Min(BleedRate, 2f);
+            Muscle = 1f;
+            _legSpent = 0f;
+            Doll.Muscle = 1f;
+            Doll.LegPower = 1f;
+            Doll.StepLeg = -1;
+            Doll.Asleep = false;
+        }
+
+        /// <summary>Whole again: no holes, no scars, no pieces hanging off, gun back in hand.</summary>
+        public void Patch()
+        {
+            Blood = Anatomy.BloodFull;
+            BleedRate = 0f;
+            Wounds.Clear();
+            HeadDamage = 0;
+            HeadWoundAngle = 0f;
+            JawGone = false;
+            EyeOut = false;
+            ClearFlaps();
+            Disarmed = false;
+            Arm.HasGun = true;
+            HatOn = true;
+            StandUp();
+        }
+
         /// <summary>
         /// Dev only. Two things must always be true of a piece hanging off a man: it is still
         /// attached, and it is not hanging through his own skull. Both are easy to break by

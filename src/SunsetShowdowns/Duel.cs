@@ -112,6 +112,14 @@ namespace LLD
         /// No call, no countdown: the fight is already running when the screen comes up.
         public bool Ambush;
 
+        /// <summary>
+        /// The test range. He stands there, he does not draw, he does not shoot back, and
+        /// the round never ends however much of him you take off - so everything the real
+        /// game does to a body can be watched happening to one, for as long as you like.
+        /// Nothing in the game turns this on.
+        /// </summary>
+        public bool Sandbox;
+
         /// Down to your last go, he has watched you take two, and he is half a beat slow
         /// out of the leather for it. Set to 0 to take the mercy back out.
         public float Cocky;
@@ -246,6 +254,7 @@ namespace LLD
                         // An ambush does not get a call. There is no READY, there is no
                         // countdown and nobody says DRAW - the line he was speaking stops in
                         // the middle and the fight is already going.
+                        if (Sandbox) { GoLive(mouse, "", 999f); _drawnOut = true; break; }
                         if (Ambush) { GoLive(mouse, "", Rng.F(0.30f, 0.46f)); break; }
 
                         Phase = Phase.Count;
@@ -344,6 +353,7 @@ namespace LLD
                         }
                         break;
                     }
+                    if (Sandbox) break;                  // and it is never over
                     int outcome = RoundOutcome(rdt);
                     if (outcome == 1) EndRound(true, Enemy.Killed ? "HE DROPS" : "HE IS FINISHED");
                     else if (outcome == 2) EndRound(false, "YOU ARE DOWN");
@@ -645,6 +655,7 @@ namespace LLD
         // ---------- opponent ----------
         void UpdateAi(float dt)
         {
+            if (Sandbox) return;                 // he is not here to fight
             if (Enemy.Dead || Player.Dead || Enemy.StunLeft > 0f) return;
 
             // A mirror's clock does not start on the call. It starts when your hand moves,
