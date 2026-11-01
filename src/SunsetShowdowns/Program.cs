@@ -2017,6 +2017,32 @@ namespace LLD
                 e.Scale = keepScale; e.Def.HairStyle = keepHair; e.Def.HatStyle = keepHat; e.HatOn = keepOn;
             }
 
+            // the kit that hangs off him rather than the man himself: a boot of each cut on
+            // both legs at once, and a hat of each brim, so a thing that is seated wrong on
+            // one leg or pitched wrong on the skull shows up beside one that is not
+            {
+                var def = Roster.Player;
+                int kBoot = def.BootStyle, kHat = def.HatStyle, kHair = def.HairStyle;
+                Raylib.BeginTextureMode(_scene);
+                Raylib.ClearBackground(new Color(214, 206, 196, 255));
+                for (int i = 0; i < 3; i++)
+                {
+                    def.BootStyle = i;
+                    def.HatStyle = i;
+                    def.HairStyle = i == 2 ? 5 : i;
+                    var f = new Fighter(def, new Vector2(330f + i * 420f, Scene.GroundY - 40f), 1);
+                    f.Update(0f, f.Arm.HolsterPoint, 0.5f, true);
+                    f.Draw(false);
+                }
+                Raylib.EndTextureMode();
+                var ki = Raylib.LoadImageFromTexture(_scene.Texture);
+                Raylib.ImageFlipVertical(ref ki);
+                Raylib.ImageCrop(ref ki, new Rectangle(150f, 330f, 1140f, 700f));
+                Raylib.ExportImage(ki, Path.Combine(dir, "28-kit.png"));
+                Raylib.UnloadImage(ki);
+                def.BootStyle = kBoot; def.HatStyle = kHat; def.HairStyle = kHair;
+            }
+
             _screen = Screen.Customise; _menuIndex = 6; _vmouse = new Vector2(1200f, 660f);
             Shot("19-customise");
             _nameDraft = "Jasqueezie"; _screen = Screen.Name; _vmouse = new Vector2(960f, 596f);

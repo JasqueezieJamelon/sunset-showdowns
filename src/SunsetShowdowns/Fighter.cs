@@ -1079,10 +1079,14 @@ namespace LLD
                 for (int i = 0; i < 4; i++)
                     Raylib.DrawCircleV(Lp(20f, -230f - i * 28f), 2.6f * Scale, P.ShirtDark);
 
+            // The neckerchief is worn ON the neck, up under the jaw, not down on the collar
+            // bone where it used to sit half swallowed by the shirt. The neck runs from
+            // -344 at the shoulders to -374 at the skull, so the band goes round the middle
+            // of that and the knot hangs off the front of it.
             if (Def.ScarfOn)
             {
-                Art.Shape(new[] { Lp(-14f, -340f), Lp(12f, -344f), Lp(16f, -330f), Lp(-10f, -326f) }, P.Scarf, 3f);
-                Art.Shape(new[] { Lp(10f, -334f), Lp(20f, -330f), Lp(14f, -312f), Lp(6f, -318f) }, P.Scarf, 3f);
+                Art.Shape(new[] { Lp(-13f, -366f), Lp(16f, -370f), Lp(19f, -350f), Lp(-11f, -346f) }, P.Scarf, 3f);
+                Art.Shape(new[] { Lp(12f, -362f), Lp(23f, -358f), Lp(18f, -344f), Lp(8f, -349f) }, P.Scarf, 3f);
             }
         }
 
@@ -1142,10 +1146,14 @@ namespace LLD
 
             switch (Def.BootStyle)
             {
-                case 1:     // a cuff turned down over the top
-                    Art.Shape(new[] { B(-20f, -22f), B(18f, -22f), B(19f, -2f), B(-21f, -2f) },
+                case 1:     // a cuff turned down over the top. It flares at the mouth and
+                            // comes back flush with the shaft at the bottom: squared off, its
+                            // wider bottom corners hung out past the boot on either side and
+                            // the cuff read as a band sitting beside the leg, not on it.
+                            // The shaft runs -16..14 across, so the cuff ends there too.
+                    Art.Shape(new[] { B(-20f, -22f), B(18f, -22f), B(14f, -4f), B(-16f, -4f) },
                         Art.Shade(boot, 1.18f), 2.5f);
-                    Art.Seam(B(-19f, -12f), B(17f, -12f), 2.5f * s, Art.Shade(boot, 0.9f));
+                    Art.Seam(B(-18f, -13f), B(16f, -13f), 2.5f * s, Art.Shade(boot, 0.9f));
                     break;
                 case 2:     // a spur off the heel
                     Art.CapsuleInked(B(-18f, 30f), B(-30f, 30f), 2.5f * s, P.Metal, 2f);
@@ -1573,10 +1581,12 @@ namespace LLD
                     inner = Edge(32f, -9f, 25f, -18f, 10f, -24f, -6f, -19f, -18f, -8f, -24f, 6f, -23f, 17f, -21f, 27f);
                     break;
 
-                case 2:     // slicked: flat to the bone and combed straight back, the hairline
-                            // high and gone at the corner
-                    outer = Arc(32f, 196f, 34f, 35f, 34f);
-                    inner = Edge(25f, -22f, 16f, -27f, 0f, -28f, -13f, -20f, -21f, -8f, -26f, 4f);
+                case 2:     // slicked: flat to the bone and combed straight back. The hairline
+                            // is high, but it still has to START at the front of the skull -
+                            // begun at 32 degrees the band was a sliver over the top and the
+                            // front of the crown was bare skin with the comb marks lying on it.
+                    outer = Arc(17f, 196f, 34f, 35f, 34f);
+                    inner = Edge(28f, -17f, 18f, -25f, 0f, -27f, -13f, -20f, -21f, -8f, -26f, 4f);
                     break;
 
                 case 3:     // long: over the crown, round the back, and down past the jaw
@@ -1589,7 +1599,7 @@ namespace LLD
                             // in points at the front and down over the nape at the back
                     outer = Art.Along(Join(Mop(8f, 198f, 40f, 44f, 39f, 2.6f, 3.5f),
                                            Edge(-38f, 12f, -36f, 22f, -31f, 30f)), N);
-                    inner = Edge(31f, -12f, 20f, -21f, 2f, -24f, -13f, -17f, -22f, -5f, -25f, 8f, -24f, 18f, -21f, 26f);
+                    inner = Edge(33f, -13f, 23f, -22f, 4f, -25f, -13f, -17f, -22f, -5f, -25f, 8f, -24f, 18f, -21f, 26f);
                     break;
 
                 case 5:     // balding: the crown gone, a band left from the temple round the back
@@ -1598,16 +1608,18 @@ namespace LLD
                     break;
 
                 default:    // cropped: cut short and close, but still coming down to a front
-                            // corner over the brow rather than stopping on top of the skull
-                    outer = Arc(22f, 198f, 35f, 35.5f, 34.5f);
-                    inner = Edge(30f, -15f, 22f, -23f, 6f, -26f, -10f, -21f, -20f, -9f, -26f, 5f);
+                            // corner over the brow rather than stopping on top of the skull.
+                            // The corner is part of the band, carried round on the skull: laid
+                            // over the top as its own tab it poked out past the head.
+                    outer = Arc(18f, 198f, 34.5f, 35.5f, 34.5f);
+                    inner = Edge(30f, -14f, 22f, -23f, 6f, -26f, -10f, -21f, -20f, -9f, -26f, 5f);
                     break;
             }
 
             // Under a real brim, only what hangs below the felt is worth drawing.
             if (hatted)
             {
-                float brim = Def.HatStyle == 1 ? -25f : Def.HatStyle == 2 ? -27f : -20f;
+                float brim = Def.HatStyle == 1 ? -25f : -20f;
                 Vector2 line = L(0f, brim), down = L(0f, brim + 1f) - line;
                 for (int i = 0; i < N; i++)
                 {
@@ -1617,11 +1629,6 @@ namespace LLD
             }
 
             Art.Band(outer, inner, hair, 3f);
-
-            // The front corner of a cropped head: short, but it still comes to a point over
-            // the brow instead of being sheared off flat along the top of the forehead.
-            if (Def.HairStyle == 0 && !hatted)
-                Art.Shape(new[] { L(33f, -21f), L(34f, -11f), L(26f, -14f), L(27f, -20f) }, hair, 2.5f);
 
             // A sideburn belongs to the same head of hair, so its top edge has to start well
             // above the hairline and inside the band - started level with the hairline it
@@ -1637,8 +1644,8 @@ namespace LLD
                 Art.Poly(new[] { L(4f, -31f), L(23f, -26f), L(30f, -14f), L(9f, -22f) }, lit);
             if (Def.HairStyle == 2)
             {
-                Art.Seam(L(-16f, -29f), L(18f, -30f), 3f * Scale, lit);
-                Art.Seam(L(-15f, -23f), L(23f, -25f), 2.5f * Scale, lit);
+                Art.Seam(L(-15f, -28f), L(13f, -31f), 3f * Scale, lit);
+                Art.Seam(L(-17f, -21f), L(21f, -27f), 2.5f * Scale, lit);
             }
             if (Def.HairStyle == 0)
                 Art.Seam(L(-18f, -28f), L(14f, -27f), 2.5f * Scale, lit);
@@ -1674,9 +1681,9 @@ namespace LLD
                     Art.Seam(L(-25f, -37f), L(31f, -37f), 6f * Scale, P.HatBand);
                     break;
                 case 2:
-                    Art.Shape(new[] { L(-52f, -27f), L(56f, -27f), L(54f, -39f), L(-50f, -39f) }, P.Hat, 3.5f);
-                    Art.Shape(new[] { L(-28f, -37f), L(-26f, -67f), L(28f, -67f), L(30f, -37f) }, P.Hat, 3.5f);
-                    Art.Seam(L(-27f, -43f), L(29f, -43f), 7f * Scale, P.HatBand);
+                    Art.Shape(new[] { L(-52f, -20f), L(56f, -20f), L(54f, -32f), L(-50f, -32f) }, P.Hat, 3.5f);
+                    Art.Shape(new[] { L(-28f, -30f), L(-26f, -60f), L(28f, -60f), L(30f, -30f) }, P.Hat, 3.5f);
+                    Art.Seam(L(-27f, -36f), L(29f, -36f), 7f * Scale, P.HatBand);
                     break;
                 case 3: break;
                 default:
