@@ -51,9 +51,12 @@ namespace LLD
         bool _foulSent;
         const float FireGrace = 0.12f;   // how long the host waits so the slower line still counts
 
-        // There used to be a ReadyJitter here - how far the cursor could drift during the
-        // count before it was called an early draw. Nothing fouls on cursor drift any more,
-        // so it and the cursor it watched are gone. See the count, below.
+        // Where the cursor was when READY went up. During the count the reach for the gun is
+        // measured from here, by exactly the same yardstick the live draw uses (DrawTrigger):
+        // a twitch, a settle, a hand shifting on the mouse is not a draw and costs nothing,
+        // but a movement big enough that it would have cleared the leather IS the draw, and
+        // doing it before the word is an early one. See the count, below.
+        Vector2 _countAnchor;
 
         // The gun clears the leather pointing at the dirt. From the moment of the call, mouse
         // movement is measured from where it was, so you have to pull the gun up yourself
@@ -98,6 +101,15 @@ namespace LLD
         /// Both men dead. Nobody scores and nobody loses a life; the round is simply replayed.
         public bool Drawn;
         const float DrawTrigger = 10f;
+
+        /// <summary>
+        /// How far the cursor may go during the count before it is called an early draw. It is
+        /// deliberately bigger than DrawTrigger. Ten pixels is the right number for a live round,
+        /// where you are trying to move, but it is a hard number to hold still inside while you
+        /// are waiting on a word - so the count gets the benefit of the doubt and you have to
+        /// make a reach nobody could mistake for a hand on a mouse.
+        /// </summary>
+        const float ReadyReach = 28f;
 
         // ---------- the run ----------
 
@@ -273,27 +285,27 @@ namespace LLD
                         Subline = "";
                         _sermonT = 1.1f;
                         _aimAnchored = false;
+                        _countAnchor = mouse;
                         Sfx.Play("ready", 0.7f);
                     }
                     break;
 
                 case Phase.Count:
                     {
-                        // MOVING THE MOUSE IS NOT DRAWING. It used to be: nudge the cursor
-                        // twenty-two pixels before the call and you were disqualified for
-                        // drawing early, with your gun still in the leather and your hand
-                        // still off it. That is a foul for something you did not do, and
-                        // there is nothing to catch anyway - the gun cannot leave the
-                        // holster before the call (the draw is only read in Live), and the
-                        // aim is slammed back down to the leather the instant the call
-                        // comes, so nobody can line a shot up during the count either.
-                        // Moving the mouse early buys you exactly nothing, so it costs you
-                        // exactly nothing. Pulling the trigger early is still a foul,
-                        // because that is a thing you actually did.
+                        // THE REACH IS THE DRAW. Go for the gun before the word and you have
+                        // drawn early, whether or not the iron had time to come up. What
+                        // counts as going for it is ReadyReach, which is a good deal more
+                        // room than the live draw needs: waiting on a word is not the same
+                        // as moving, and nobody should lose a fight to a hand resettling on
+                        // a mouse. Measured from where the cursor stood when READY went up,
+                        // so it is the whole reach that counts, not the speed of it - creep
+                        // there slowly over four seconds and you have still gone for it.
+                        bool reached = Vector2.Distance(mouse, _countAnchor) > ReadyReach;
 
                         if (IsNet)
                         {
                             if (firePressed) { NetFoul("YOU FIRED EARLY"); break; }
+                            if (reached) { NetFoul("YOU DREW EARLY"); break; }
                             if (Net.HostTime >= NetDrawTime)
                             {
                                 Phase = Phase.Live;
@@ -334,6 +346,7 @@ namespace LLD
                         }
 
                         if (firePressed) { Foul("YOU FIRED EARLY"); break; }
+                        if (reached) { Foul("YOU DREW EARLY"); break; }
                         if (_countdown <= 0f) GoLive(mouse, "DRAW!", Rng.F(Def.ReactMin, Def.ReactMax));
                         break;
                     }
@@ -793,6 +806,7 @@ namespace LLD
             Subline = "";
             _foulSent = false;
             _aimAnchored = false;
+            _countAnchor = _lastMouse;
             Sfx.Play("ready", 0.7f);
         }
 

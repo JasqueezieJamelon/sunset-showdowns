@@ -39,7 +39,7 @@ namespace LLD
     public class App
     {
         /// Bumped by the last digit on every change. Stays on 0.1.x until told otherwise.
-        public const string Version = "0.2";
+        public const string Version = "0.2.0.1";
 
         Settings S;
         RenderTexture2D _scene;
@@ -2947,42 +2947,54 @@ namespace LLD
                 Gore.Reset();
             }
 
-            // MOVING THE MOUSE BEFORE THE CALL IS NOT DRAWING EARLY. Swing the cursor all
-            // over the screen during the count and nothing happens to you; pull the trigger
-            // and you are out. And the reason the first of those is safe to allow is that
-            // it wins you nothing: the aim is put back down on the leather when the call
-            // comes, so wherever you waved it, you start from the same place as everybody.
+            // THE REACH IS THE DRAW, AND A TWITCH IS NOT. Swing the cursor across the screen
+            // during the count and you are out for drawing early. Shuffle your hand on the
+            // mouse and nothing happens - and the count is forgiving about what counts as a
+            // shuffle, so twenty pixels of resettling is still nothing, well past the ten
+            // that would have cleared the leather in a live round. Pulling the trigger early
+            // is still a foul of its own.
             {
-                int fouledForMoving = 0, fouledForFiring = 0;
-                float worstGain = 0f;
+                int fouledForWaving = 0, fouledForTwitching = 0, fouledForFiring = 0;
                 const int runs = 12;
                 for (int k = 0; k < runs; k++)
                 {
+                    // thrash the cursor the whole way through the count
                     var sd = new Duel(Roster.All[5], S);
                     Vector2 held = sd.HolsterPoint;
-                    // thrash the cursor the whole way through the count
                     for (float t = 0f; t < 12f && sd.Phase != Phase.Live; t += dt)
                     {
                         Vector2 waved = held + new Vector2(MathF.Sin(t * 11f) * 700f, MathF.Cos(t * 9f) * 400f);
                         sd.Update(dt, waved, false, false);
                         if (sd.Phase == Phase.Foul) break;
-                        if (sd.AimReset) { sd.AimReset = false; held = sd.AimResetTo; }
                     }
-                    if (sd.Phase == Phase.Foul) { fouledForMoving++; continue; }
-                    // where the aim ended up against where the leather is: it must be there
-                    worstGain = MathF.Max(worstGain, Vector2.Distance(held, sd.HolsterPoint + new Vector2(sd.Player.Face * 30f, 240f)));
+                    if (sd.Phase == Phase.Foul) fouledForWaving++;
 
-                    // now the same man, and this time pull the trigger early
+                    // the same count, and this time the hand only resettles: it slides twenty
+                    // pixels off where it was and stays there. That is more than a live draw
+                    // needs and it must still not be a reach.
+                    var td = new Duel(Roster.All[5], S);
+                    Vector2 rest = td.HolsterPoint;
+                    float settled = 0f;
+                    for (float t = 0f; t < 12f && td.Phase != Phase.Live; t += dt)
+                    {
+                        if (td.Phase == Phase.Count) settled = MathF.Min(20f, settled + dt * 40f);
+                        Vector2 nudged = rest + new Vector2(settled * 0.6f, -settled * 0.8f);
+                        td.Update(dt, nudged, false, false);
+                        if (td.Phase == Phase.Foul) break;
+                    }
+                    if (td.Phase == Phase.Foul) fouledForTwitching++;
+
+                    // and this time pull the trigger early, hands still
                     var fd = new Duel(Roster.All[5], S);
                     Vector2 still = fd.HolsterPoint;
                     for (float t = 0f; t < 12f && fd.Phase == Phase.Card; t += dt) fd.Update(dt, still, false, false);
                     for (float t = 0f; t < 0.2f; t += dt) fd.Update(dt, still, true, false);
                     if (fd.Phase == Phase.Foul) fouledForFiring++;
                 }
-                bool ok = fouledForMoving == 0 && fouledForFiring == runs && worstGain < 1f;
-                Console.WriteLine($"[check] waving the mouse is not drawing: disqualified for moving" +
-                    $" {fouledForMoving}/{runs} times, for firing early {fouledForFiring}/{runs}," +
-                    $" and the aim was put back on the leather to within {worstGain:0.0}px" +
+                bool ok = fouledForWaving == runs && fouledForTwitching == 0 && fouledForFiring == runs;
+                Console.WriteLine($"[check] the reach before the word is an early draw: disqualified for" +
+                    $" reaching {fouledForWaving}/{runs} times, for twenty pixels of resettling" +
+                    $" {fouledForTwitching}/{runs}, for firing early {fouledForFiring}/{runs}" +
                     (ok ? " - ok" : "  FAIL"));
             }
 
