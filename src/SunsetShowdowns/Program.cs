@@ -1332,7 +1332,10 @@ namespace LLD
             // headline
             if (!string.IsNullOrEmpty(_duel.Headline))
             {
-                float size = _duel.Phase == Phase.Live ? 132f : 86f;
+                // The preacher's sermon goes where READY goes, in place of it, so the word you
+                // are waiting for and the words you are not are in exactly the same spot.
+                // It is a sentence rather than a shout, so it is set smaller to fit.
+                float size = (_duel.Phase == Phase.Live ? 132f : 86f) * _duel.HeadlineScale;
                 Color hc = _duel.Phase switch
                 {
                     Phase.Live => new Color(255, 238, 198, 255),
@@ -2514,6 +2517,92 @@ namespace LLD
                                   $"enemyDown={_duel.Enemy.Down} enemyDead={_duel.Enemy.Dead} blood={_duel.Enemy.Blood:0}");
             }
 
+            // The preacher never says READY. He talks through the stand-off in the same place
+            // the word would have been, and the word arrives somewhere inside the talking -
+            // a different somewhere every time, or there would be something to learn.
+            {
+                int sawReady = 0, said = 0; const int runs = 14;
+                float lo = 1e9f, hi = -1e9f;
+                for (int k = 0; k < runs; k++)
+                {
+                    var sd = new Duel(Roster.All[2], S);     // Reverend Hollow
+                    Vector2 held = sd.HolsterPoint;
+                    float t = 0f;
+                    bool spoke = false;
+                    for (; t < 14f && sd.Phase != Phase.Live; t += dt)
+                    {
+                        sd.Update(dt, held, false, false);
+                        if (sd.Phase != Phase.Count) continue;
+                        if (sd.Headline == "READY") sawReady++;
+                        else if (sd.Headline.Length > 0) spoke = true;
+                    }
+                    if (spoke) said++;
+                    lo = MathF.Min(lo, t); hi = MathF.Max(hi, t);
+                }
+                // and what that looks like, in the place READY would have been
+                {
+                    var keep = _duel;
+                    Gore.Reset();   // the plate before this one left guns and blood all over the street
+                    var sd = new Duel(Roster.All[2], S);
+                    Vector2 held = sd.HolsterPoint;
+                    for (float t = 0f; t < 14f && sd.Phase != Phase.Count; t += dt) sd.Update(dt, held, false, false);
+                    for (float t = 0f; t < 0.4f; t += dt) sd.Update(dt, held, false, false);
+                    _duel = sd; _screen = Screen.Play; ResetCamera();
+                    for (int i = 0; i < 20; i++) UpdateCamera(dt);
+                    _vmouse = held;
+                    Shot("03c-sermon");
+                    _duel = keep;
+                }
+
+                bool ok = sawReady == 0 && said == runs && (hi - lo) > 1.5f;
+                Console.WriteLine($"[check] the preacher never says ready: {said}/{runs} preached," +
+                    $" READY shown {sawReady} times, the word landed anywhere from {lo:0.0}s to {hi:0.0}s" +
+                    (ok ? " - ok" : "  FAIL"));
+            }
+
+            // A dead man goes down and STAYS down. Not "mostly stops" - a corpse that is
+            // still travelling two seconds after it landed will be travelling faster two
+            // seconds after that, because whatever is moving it has not stopped either.
+            {
+                float worstLift = 0f, worstDrift = 0f, worstSpeed = 0f;
+                int asleep = 0; const int tries = 30;
+                for (int k = 0; k < tries; k++)
+                {
+                    var f = new Fighter(Roster.All[k % Roster.All.Length], Scene.EnemyStand, -1);
+                    for (int i = 0; i < 40; i++) f.Update(dt, f.Arm.HolsterPoint, Fighter.ArmWeight, true);
+                    float ang = -0.2f - k * (MathF.PI * 0.8f / tries);
+                    f.Crippled = k % 3 == 0;
+                    f.Collapse(new Vector2(MathF.Cos(ang), MathF.Sin(ang)), 0.6f + k * 0.07f);
+                    // let him land and have his first bounce out
+                    for (float t = 0f; t < 4.5f; t += dt) f.Update(dt, f.Arm.HolsterPoint, Fighter.ArmWeight, false);
+
+                    float bodySpeed = 0f, bodyLift = 0f;
+                    float x0 = f.Doll.Pos[Ragdoll.Pelvis].X;
+                    for (float t = 0f; t < 4f; t += dt)
+                    {
+                        f.Update(dt, f.Arm.HolsterPoint, Fighter.ArmWeight, false);
+                        for (int i = 0; i < Ragdoll.Count; i++)
+                        {
+                            float floor = Scene.GroundY - f.Doll.Clear[i];
+                            bodyLift = MathF.Max(bodyLift, floor - f.Doll.Pos[i].Y);
+                            bodySpeed = MathF.Max(bodySpeed,
+                                (f.Doll.Pos[i] - f.Doll.Prev[i]).Length() / Ragdoll.Fixed);
+                        }
+                        worstDrift = MathF.Max(worstDrift, MathF.Abs(f.Doll.Pos[Ragdoll.Pelvis].X - x0));
+                    }
+                    worstSpeed = MathF.Max(worstSpeed, bodySpeed);
+                    worstLift = MathF.Max(worstLift, bodyLift);
+                    if (f.Doll.Asleep) asleep++;
+                }
+                // Lift is reported, not failed on: a man lying on his side has an arm a
+                // hundred pixels above the street and there is nothing wrong with that.
+                // Drift, speed and sleep are what "stays down" actually means.
+                bool ok = worstDrift < 40f && worstSpeed < 400f && asleep >= tries - 2;
+                Console.WriteLine($"[check] a corpse stays down: worst rebound {worstLift:0}px," +
+                    $" drifted {worstDrift:0}px over 4s, fastest part {worstSpeed:0}px/s," +
+                    $" {asleep}/{tries} settled" + (ok ? " - ok" : "  FAIL"));
+            }
+
             // A face that comes apart has to stay his face. Every piece hanging off a man is
             // still attached to him, never hanging through his own skull, and it has to go
             // where his head goes - a flap that holds still while he falls over is the decal
@@ -2540,7 +2629,7 @@ namespace LLD
                     Vector2 was = f.FlapTip(0);
                     Vector2 headWas = f.HeadCenter;
                     f.Collapse(new Vector2(-0.8f, -0.3f), 1.1f);
-                    for (float t = 0f; t < 2.5f; t += dt) f.Update(dt, f.Arm.HolsterPoint, Fighter.ArmWeight, false);
+                    for (float t = 0f; t < 4.5f; t += dt) f.Update(dt, f.Arm.HolsterPoint, Fighter.ArmWeight, false);
                     f.FlapCheck(out float s1, out float i1, out int p1);
                     stretch = MathF.Max(stretch, s1); inside = MathF.Max(inside, i1); pinned += p1;
                     swung = MathF.Max(swung, Vector2.Distance(f.FlapTip(0), was));

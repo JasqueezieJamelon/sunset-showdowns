@@ -242,6 +242,7 @@ namespace LLD
 
             Muscles();
 
+
             for (int iter = 0; iter < 6; iter++)
             {
                 foreach (var l in _links)
@@ -480,6 +481,33 @@ namespace LLD
             bool bad = (side * Face > 0f) ? d < want : d > want;
             if (!bad) return;
 
+            // HOW FAR THE LIMB CAN ACTUALLY BEND. A knee can only come off the line between
+            // the hip and the boot if the two bones are longer than that line - pulled
+            // straight, there is nowhere for it to go, and asking anyway is asking for the
+            // bones to stretch.
+            //
+            // That was the corpse bug. A dead man with a straight leg had this stop demanding
+            // a bend the skeleton could not give, the bones hauling the knee back onto the
+            // line, and the stop shoving it off again - eighty pixels a pass, six passes a
+            // substep, a hundred and twenty substeps a second, with the two of them handing
+            // energy to each other the whole time. He crept, then he bounced off the street,
+            // then he went down the road at seventeen thousand pixels a second. Neither one
+            // of them was wrong on its own; they simply could not both be satisfied, and
+            // nothing was telling them to stop trying.
+            // The two bones and the line between their ends make a triangle, and the furthest
+            // the joint can sit off that line is the height of it. Ask for more and the only
+            // way to get it is to stretch the bones, which the bones will not have.
+            float l1 = Vector2.Distance(A, B), l2 = Vector2.Distance(B, C);
+            float sp = (l1 + l2 + len) * 0.5f;
+            float area2 = sp * (sp - l1) * (sp - l2) * (sp - len);
+            float room = area2 <= 0f ? 0f : 2f * MathF.Sqrt(area2) / len;
+            if (room < 0.5f) return;
+
+            // and it can never be shoved further than that, in one go
+            float off = want - d;
+            float lim = MathF.Min(MathF.Abs(off), room);
+            off = off < 0f ? -lim : lim;
+
             // The joint takes most of it, and the two ends take the kick back - except where an
             // end is standing on the street. A knee resting against its stop all day otherwise
             // shoves his hip and his boot the same way every tick and walks him down the road
@@ -491,11 +519,51 @@ namespace LLD
             // the same way every tick and walk him down the street with nobody touching him.
             // A limp body has nothing to brace with, and it is the kick back through the ends
             // that lets it stop moving at all.
-            Vector2 fix = n * (want - d);
-            Pos[b] += fix * 0.8f;
-            float react = Muscle > 0.05f ? 0f : 0.1f;
-            Pos[a] -= fix * react;
-            Pos[c] -= fix * react;
+            // A JOINT STOP MUST NOT MOVE THE MAN. Push the knee one way and the hip and the
+            // boot have to take the same amount back between them, or every tick the stop is
+            // touched the whole body is quietly shoved - and in a position solver a shove IS
+            // speed. A limp man with a knee resting against its stop was being pushed six
+            // times a substep, a hundred and twenty substeps a second: he crept, then he
+            // bounced off the street, then he went up the road at twenty thousand pixels a
+            // second. It was not the collision and it was not the bones. It was this.
+            //
+            // A man holding himself up is the exception, and a real one: what a braced limb
+            // pushes against goes into the street through his boots, so the ends keep still
+            // and the ground swallows it. Only a body with no strength left in it has to
+            // obey the books.
+            // A MAN HOLDING HIMSELF UP AND A DEAD ONE NEED DIFFERENT STOPS.
+            //
+            // Upright, this stop is load-bearing: it is most of what keeps his knee from
+            // folding under him, so it goes in hard and the reaction goes into the street
+            // through his boots rather than back up through him. Ration it and he sags -
+            // measured, his weight came off his boots and his stance shut from 38 to 33.
+            //
+            // Limp, there is nothing to brace against and nothing it needs to hold up, and
+            // a joint that is hard against a stop it can never get off - a leg folded the
+            // wrong way under a man who has rolled over - gets shoved at full strength six
+            // times a substep, a hundred and twenty substeps a second, with the bones
+            // shoving back every time. The two of them hand energy to each other until he
+            // bounces off the street and leaves it at seventeen thousand pixels a second.
+            // So a dead man's joints are eased straight a few pixels at a time, and the two
+            // ends take back exactly what the joint is given, because nothing about a corpse
+            // should be able to move a corpse.
+            const float Push = 0.8f;       // what a braced joint gets
+            const float LimpPush = 0.14f;  // what a dead one gets
+            const float LimpStep = 2f;     // and never more than this far in one pass
+
+            float push = Push;
+            float back = 0f;
+            if (Muscle <= 0.05f)
+            {
+                push = LimpPush;
+                back = push * 0.5f;
+                off = Math.Clamp(off, -LimpStep, LimpStep);
+            }
+
+            Vector2 fix = n * off;
+            Pos[b] += fix * push;
+            Pos[a] -= fix * back;
+            Pos[c] -= fix * back;
         }
 
         /// <summary>

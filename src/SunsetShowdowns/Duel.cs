@@ -123,15 +123,26 @@ namespace LLD
         float _sermonT;
         int _sermonLine;
 
+        /// <summary>
+        /// What the preacher says instead of READY. It goes in the same place, in the same
+        /// letters, so there is no second thing to watch - the word you are waiting for
+        /// arrives in the middle of the words you are not, and lands somewhere different
+        /// every time. Kept short: it is set in the headline, and the headline is enormous.
+        /// </summary>
         static readonly string[] Sermon =
         {
-            "the wages of sin is death",
-            "and I looked, and behold a pale horse",
-            "he that is unjust, let him be unjust still",
-            "there is no peace, saith my God, to the wicked",
-            "the night is far spent, the day is at hand",
-            "dust thou art, and unto dust shalt thou return",
+            "THE WAGES OF SIN",
+            "BEHOLD A PALE HORSE",
+            "THE NIGHT IS FAR SPENT",
+            "DUST THOU ART",
+            "LET HIM BE UNJUST STILL",
+            "NO PEACE FOR THE WICKED",
+            "THE DAY IS AT HAND",
+            "AND DEATH FOLLOWED",
         };
+
+        /// How big the headline is drawn, as a fraction. A sermon is a sentence, not a shout.
+        public float HeadlineScale = 1f;
 
         public Duel(CharDef def, Settings s, Wounds hurts = null, bool ambush = false)
         {
@@ -240,8 +251,12 @@ namespace LLD
                         Phase = Phase.Count;
                         // a preacher talks over the word, so the word can come a long way in
                         _countdown = Def.Sermon ? Rng.F(1.6f, 5.4f) : Rng.F(1.1f, 2.9f);
-                        Headline = "READY";
-                        Subline = Def.Sermon ? Sermon[_sermonLine = Rng.I(0, Sermon.Length)] : "";
+                        // He does not get a READY at all. The sermon IS the ready, which is
+                        // the whole of him: you cannot watch for one word arriving in an
+                        // empty space, you have to read the one that is already there.
+                        Headline = Def.Sermon ? Sermon[_sermonLine = Rng.I(0, Sermon.Length)] : "READY";
+                        HeadlineScale = Def.Sermon ? 0.52f : 1f;
+                        Subline = "";
                         _sermonT = 1.1f;
                         _readyArmed = false;
                         _aimAnchored = false;
@@ -280,9 +295,9 @@ namespace LLD
                             _sermonT -= rdt;
                             if (_sermonT <= 0f)
                             {
-                                _sermonT = Rng.F(1.0f, 1.5f);
+                                _sermonT = Rng.F(0.85f, 1.35f);
                                 _sermonLine = (_sermonLine + 1) % Sermon.Length;
-                                Subline = Sermon[_sermonLine];
+                                Headline = Sermon[_sermonLine];
                             }
                         }
 
@@ -441,6 +456,7 @@ namespace LLD
             Phase = Phase.Live;
             AnchorAim(mouse);
             Headline = headline;
+            HeadlineScale = 1f;   // whatever he was saying, DRAW is said at full volume
             Subline = "";
             _phaseT = 0f;
             _aiDrawn = false;
