@@ -790,8 +790,6 @@ namespace LLD
                 Art.Text(Art.Body, _boardNote, new Vector2(Art.VW * 0.5f, Art.VH - 108f), 30f,
                     new Color(206, 180, 150, 210), true);
 
-            Art.Text(Art.Body, "click a notice, or arrow keys", new Vector2(Art.VW * 0.5f, Art.VH - 62f), 28f,
-                new Color(176, 158, 140, 170), true);
         }
 
         /// <summary>What the run has cost you so far, written on a standing man.</summary>
@@ -804,7 +802,7 @@ namespace LLD
             f.Update(0f, f.Arm.HolsterPoint, 0.5f, true);
             f.Draw(false);
 
-            Art.Text(Art.Display, "WHAT IT HAS COST", new Vector2(120f, 250f), 34f, new Color(226, 150, 120, 230));
+            Art.Text(Art.Display, "INJURIES", new Vector2(120f, 250f), 34f, new Color(226, 150, 120, 230));
             float y = 304f;
             bool any = false;
             for (int i = 1; i < 5; i++)
