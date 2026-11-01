@@ -25,7 +25,7 @@ namespace LLD
         public float Seed;        // keeps each tear a different shape
     }
 
-    public class Fighter
+    public partial class Fighter
     {
         public CharDef Def;
         public Palette P => Def.P;
@@ -536,7 +536,9 @@ namespace LLD
                 Gore.Chunks(worldExit, worldDir, P.Skin, (int)(5 + 7 * (rep.HeadSeverity - 1)));
                 // the piece of skull that came away with it
                 Gore.SkullPieces(worldExit, worldDir, P.Skin, rep.HeadSeverity >= 2 ? 3 : 1);
-                if (rep.JawGone) JawGone = true;
+                // and the parts of him that came loose without coming off
+                TearFace(HeadWoundAngle, rep.HeadSeverity, worldDir, worldExit);
+                if (rep.JawGone) { JawGone = true; if (rep.HeadSeverity < 2) HangJaw(); }
                 if (rep.EyeOut && !EyeOut)
                 {
                     EyeOut = true;
@@ -701,6 +703,7 @@ namespace LLD
                     foreach (var w in Wounds)
                         if (Rng.Chance(dt * 2.2f))
                             Gore.Pool(WoundPos(w) + new Vector2(Rng.F(-24f, 24f), 0f), Rng.F(10f, 24f) * Math.Clamp(w.Bleed / 12f, 0.5f, 1.8f));
+                UpdateFlaps(dt);
                 return;
             }
 
@@ -724,6 +727,11 @@ namespace LLD
                 if (StunLeft > 0f) target += new Vector2(Face * -40f, 60f) * StunLeft;
             }
             Arm.Update(dt, holstered ? Arm.HolsterPoint : target, armWeight + Impairment * 0.25f);
+
+            // Last of all, once the body and the ragdoll have both finished moving. Solved
+            // any earlier and every loose piece of him is hanging off where his head WAS a
+            // frame ago, which during a fall is several inches behind where it is now.
+            UpdateFlaps(dt);
         }
         /// <summary>
         /// What keeps him on his feet. There is no separate standing simulation any more - the
@@ -1406,9 +1414,13 @@ namespace LLD
             {
                 if (JawGone)
                 {
-                    for (int i = 0; i < 7; i++)
-                        Raylib.DrawCircleV(L(-18f + i * 8f, 18f + (i % 3) * 4f), 5.5f * Scale, new Color(112, 14, 19, 240));
-                    Raylib.DrawCircleV(L(4f, 22f), 9f * Scale, new Color(40, 6, 10, 255));
+                    // With the jaw still hanging off him by one hinge there is no need to
+                    // paint a row of blobs where it used to be: you can see where it went.
+                    int blobs = JawHanging ? 4 : 7;
+                    float br = JawHanging ? 3.4f : 5.5f;
+                    for (int i = 0; i < blobs; i++)
+                        Raylib.DrawCircleV(L(-18f + i * 8f, 18f + (i % 3) * 4f), br * Scale, new Color(112, 14, 19, 240));
+                    if (!JawHanging) Raylib.DrawCircleV(L(4f, 22f), 9f * Scale, new Color(40, 6, 10, 255));
                 }
                 if (HeadDamage > 0)
                 {
@@ -1430,12 +1442,16 @@ namespace LLD
                     {
                         // tapering, so it reads as something running down him rather than a bar
                         var bl = new Color(96, 12, 16, 220);
-                        Raylib.DrawLineEx(low, low + new Vector2(0f, run * 0.55f), 8f * Scale, bl);
-                        Raylib.DrawLineEx(low + new Vector2(0f, run * 0.5f), low + new Vector2(0f, run * 0.85f), 5f * Scale, bl);
+                        Raylib.DrawLineEx(low, low + new Vector2(0f, run * 0.55f), 5.5f * Scale, bl);
+                        Raylib.DrawLineEx(low + new Vector2(0f, run * 0.5f), low + new Vector2(0f, run * 0.85f), 3.6f * Scale, bl);
                         Raylib.DrawCircleV(low + new Vector2(0f, run * 0.9f), 3f * Scale, bl);
                     }
                 }
             }
+
+            // The loose pieces go on last of all, over the hole and over the hair, because
+            // that is where they are: hanging off the front of him.
+            DrawFlaps(c, up, fwd);
 
             if (withHat) DrawHat(L);
         }

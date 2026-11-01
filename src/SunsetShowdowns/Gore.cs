@@ -215,6 +215,44 @@ namespace LLD
         }
 
         /// <summary>
+        /// A sheet of face. Not a pellet of meat - a wide, flat, slow piece with his own skin
+        /// colour on it, so when a head comes apart you can see what used to be on the front
+        /// of it turning over in the air on its way to the street.
+        /// </summary>
+        public static void FaceSkin(Vector2 p, Vector2 dir, Color skin, int count)
+        {
+            if (Level == GoreLevel.Off) return;
+            count = Math.Max(1, (int)(count * GoreScale));
+            for (int i = 0; i < count; i++)
+            {
+                int sides = Rng.I(5, 8);
+                var shape = new Vector2[sides];
+                float baseR = Rng.F(14f, 24f);
+                // flat: long one way and thin the other, so it reads as a sheet and not a lump
+                float squash = Rng.F(0.26f, 0.46f);
+                for (int k = 0; k < sides; k++)
+                {
+                    float a = k / (float)sides * MathF.PI * 2f;
+                    float rr = baseR * Rng.F(0.72f, 1.15f);
+                    shape[k] = new Vector2(MathF.Cos(a) * rr, MathF.Sin(a) * rr * squash);
+                }
+                Add(new Particle
+                {
+                    Kind = PKind.Gib,
+                    Pos = p + Rng.Dir() * 6f,
+                    Vel = dir * Rng.F(90f, 320f) + Rng.Dir() * Rng.F(50f, 190f) + new Vector2(0f, -300f),
+                    Rad = baseR,
+                    MaxLife = 18f, Life = 18f,
+                    Rot = Rng.F(0f, 6.28f),
+                    RotVel = Rng.F(-7f, 7f),
+                    Col = i == 0 ? skin : Art.Mix(skin, Blood(0.9f), 0.35f),
+                    Shape = shape,
+                    Bounce = 0.14f,
+                });
+            }
+        }
+
+        /// <summary>
         /// The piece of him that came off: skin on the outside, bone underneath. Bigger and
         /// slower than the spray, so it lands somewhere you can see it.
         /// </summary>

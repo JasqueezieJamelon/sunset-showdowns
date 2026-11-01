@@ -2062,20 +2062,31 @@ namespace LLD
                 e.Scale = 3.4f;
                 Raylib.BeginTextureMode(_scene);
                 Raylib.ClearBackground(new Color(224, 216, 202, 255));
-                float[] angs = { 0.15f, 2.6f, 1.5f };
-                int[] dmg = { 1, 2, 2 };
-                bool[] eyes = { false, true, true };
-                for (int i = 0; i < 3; i++)
+                bool kj = e.JawGone;
+                float[] angs = { 0.15f, 2.6f, 1.5f, 0.1f };
+                int[] dmg = { 1, 2, 2, 1 };
+                bool[] eyes = { false, true, true, false };
+                bool[] jaws = { false, false, false, true };
+                for (int i = 0; i < 4; i++)
                 {
                     e.HeadDamage = dmg[i]; e.HeadWoundAngle = angs[i]; e.EyeOut = eyes[i];
+                    e.JawGone = jaws[i];
                     Vector2 hp = new Vector2(380f + i * 420f, 560f);
+                    // tear it, hang it off this head and let it swing itself to rest, so the
+                    // plate shows what a face does rather than what a decal does
+                    e.ClearFlaps();
+                    e.PoseHeadAt(hp);
+                    if (jaws[i]) e.HangJaw();
+                    else e.TearFace(angs[i], dmg[i], new Vector2(e.Face, -0.3f), hp);
+                    for (float t = 0f; t < 1.6f; t += dt) e.UpdateFlaps(dt);
                     Art.InkPass = true; e.DrawHeadOnly(hp, false); Art.InkPass = false;
                     e.DrawHeadOnly(hp, false);
                 }
+                e.PoseHeadClear(); e.ClearFlaps(); e.JawGone = kj;
                 Raylib.EndTextureMode();
                 var hi = Raylib.LoadImageFromTexture(_scene.Texture);
                 Raylib.ImageFlipVertical(ref hi);
-                Raylib.ImageCrop(ref hi, new Rectangle(200f, 340f, 1460f, 440f));
+                Raylib.ImageCrop(ref hi, new Rectangle(200f, 320f, 1620f, 520f));
                 Raylib.ExportImage(hi, Path.Combine(dir, "07c-headplate.png"));
                 Raylib.UnloadImage(hi);
                 e.Scale = keepScale; e.HeadDamage = kd; e.HeadWoundAngle = ka; e.EyeOut = ke;
@@ -2092,6 +2103,33 @@ namespace LLD
             {
                 for (float t = 0f; t < waits[i]; t += dt) { _duel.Update(dt, aim, false, false); UpdateCamera(dt); }
                 Shot(stops[i]);
+            }
+            // What is left of a face once the man wearing it has stopped moving. Not the man
+            // above - a head shot that kills outright takes the whole head with it and there
+            // is nothing to hang. This is the one that only took his cheek off.
+            {
+                Raylib.BeginTextureMode(_scene);
+                Raylib.ClearBackground(new Color(214, 206, 196, 255));
+                for (int k = 0; k < 3; k++)
+                {
+                    var f = new Fighter(Roster.All[k * 3], new Vector2(340f + k * 470f, Scene.GroundY), -1);
+                    for (int i = 0; i < 30; i++) f.Update(dt, f.Arm.HolsterPoint, Fighter.ArmWeight, true);
+                    f.Scale = 1.5f;
+                    f.HeadDamage = 1;
+                    f.HeadWoundAngle = 0.1f + k * 0.5f;
+                    f.TearFace(f.HeadWoundAngle, 1, new Vector2(-1f, -0.4f), f.HeadCenter);
+                    if (k == 1) { f.JawGone = true; f.HangJaw(); }
+                    if (k == 2) { f.EyeOut = true; }
+                    f.Collapse(new Vector2(-0.9f, -0.25f), 1.0f + k * 0.2f);
+                    for (float t = 0f; t < 4.5f; t += dt) f.Update(dt, f.Arm.HolsterPoint, Fighter.ArmWeight, false);
+                    f.Draw(false);
+                }
+                Raylib.EndTextureMode();
+                var fi = Raylib.LoadImageFromTexture(_scene.Texture);
+                Raylib.ImageFlipVertical(ref fi);
+                Raylib.ImageCrop(ref fi, new Rectangle(60f, 580f, 1680f, 380f));
+                Raylib.ExportImage(fi, Path.Combine(dir, "11b-face.png"));
+                Raylib.UnloadImage(fi);
             }
 
             // second duel: a lung shot, to watch the stagger and the bleed-out
@@ -2474,6 +2512,49 @@ namespace LLD
                 while (t < 12f && !_duel.Finished) { _duel.Update(dt, aim2, false, false); t += dt; }
                 Console.WriteLine($"[check] downed-not-dead round resolved={_duel.Finished} after {t:0.0}s " +
                                   $"enemyDown={_duel.Enemy.Down} enemyDead={_duel.Enemy.Dead} blood={_duel.Enemy.Blood:0}");
+            }
+
+            // A face that comes apart has to stay his face. Every piece hanging off a man is
+            // still attached to him, never hanging through his own skull, and it has to go
+            // where his head goes - a flap that holds still while he falls over is the decal
+            // this replaced.
+            {
+                float stretch = 0f, inside = 0f, carried = 1e9f, swung = 0f;
+                int pinned = 0;
+                int torn = 0; const int runs = 12;
+                for (int k = 0; k < runs; k++)
+                {
+                    var f = new Fighter(Roster.All[k % Roster.All.Length], Scene.EnemyStand, -1);
+                    for (int i = 0; i < 30; i++) f.Update(dt, f.Arm.HolsterPoint, Fighter.ArmWeight, true);
+                    f.HeadDamage = k % 2 + 1;
+                    f.HeadWoundAngle = k / (float)runs * MathF.PI * 2f;
+                    f.TearFace(f.HeadWoundAngle, f.HeadDamage, new Vector2(-1f, -0.4f), f.HeadCenter);
+                    if (k % 3 == 0) f.HangJaw();
+                    torn += f.FlapCount;
+
+                    for (float t = 0f; t < 2f; t += dt) f.Update(dt, f.Arm.HolsterPoint, Fighter.ArmWeight, true);
+                    f.FlapCheck(out float s0, out float i0, out int _p0);
+                    stretch = MathF.Max(stretch, s0); inside = MathF.Max(inside, i0);
+
+                    // now put him on the ground and see whether his face comes with him
+                    Vector2 was = f.FlapTip(0);
+                    Vector2 headWas = f.HeadCenter;
+                    f.Collapse(new Vector2(-0.8f, -0.3f), 1.1f);
+                    for (float t = 0f; t < 2.5f; t += dt) f.Update(dt, f.Arm.HolsterPoint, Fighter.ArmWeight, false);
+                    f.FlapCheck(out float s1, out float i1, out int p1);
+                    stretch = MathF.Max(stretch, s1); inside = MathF.Max(inside, i1); pinned += p1;
+                    swung = MathF.Max(swung, Vector2.Distance(f.FlapTip(0), was));
+                    // it moved because HE moved, so measure it against the head, not the world
+                    carried = MathF.Min(carried,
+                        Vector2.Distance(f.FlapTip(0) - f.HeadCenter, was - headWas));
+                }
+                // a few pixels of stretch is the ground pressing a flap flat under a head
+                // that is lying on it, which is the one place the tether is allowed to lose
+                bool ok = torn >= runs && stretch < 1.5f && inside < 1.5f && swung > 40f;
+                Console.WriteLine($"[check] his face comes with him: {torn} pieces torn off {runs} men," +
+                    $" worst stretch {stretch:0.0}px, deepest inside the skull {inside:0.0}px," +
+                    $" swung {swung:0}px as he went down, {pinned} pinched under a head on the street" +
+                    (ok ? " - ok" : "  FAIL"));
             }
 
             // ---------- the run ----------
