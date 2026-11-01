@@ -2947,6 +2947,45 @@ namespace LLD
                 Gore.Reset();
             }
 
+            // MOVING THE MOUSE BEFORE THE CALL IS NOT DRAWING EARLY. Swing the cursor all
+            // over the screen during the count and nothing happens to you; pull the trigger
+            // and you are out. And the reason the first of those is safe to allow is that
+            // it wins you nothing: the aim is put back down on the leather when the call
+            // comes, so wherever you waved it, you start from the same place as everybody.
+            {
+                int fouledForMoving = 0, fouledForFiring = 0;
+                float worstGain = 0f;
+                const int runs = 12;
+                for (int k = 0; k < runs; k++)
+                {
+                    var sd = new Duel(Roster.All[5], S);
+                    Vector2 held = sd.HolsterPoint;
+                    // thrash the cursor the whole way through the count
+                    for (float t = 0f; t < 12f && sd.Phase != Phase.Live; t += dt)
+                    {
+                        Vector2 waved = held + new Vector2(MathF.Sin(t * 11f) * 700f, MathF.Cos(t * 9f) * 400f);
+                        sd.Update(dt, waved, false, false);
+                        if (sd.Phase == Phase.Foul) break;
+                        if (sd.AimReset) { sd.AimReset = false; held = sd.AimResetTo; }
+                    }
+                    if (sd.Phase == Phase.Foul) { fouledForMoving++; continue; }
+                    // where the aim ended up against where the leather is: it must be there
+                    worstGain = MathF.Max(worstGain, Vector2.Distance(held, sd.HolsterPoint + new Vector2(sd.Player.Face * 30f, 240f)));
+
+                    // now the same man, and this time pull the trigger early
+                    var fd = new Duel(Roster.All[5], S);
+                    Vector2 still = fd.HolsterPoint;
+                    for (float t = 0f; t < 12f && fd.Phase == Phase.Card; t += dt) fd.Update(dt, still, false, false);
+                    for (float t = 0f; t < 0.2f; t += dt) fd.Update(dt, still, true, false);
+                    if (fd.Phase == Phase.Foul) fouledForFiring++;
+                }
+                bool ok = fouledForMoving == 0 && fouledForFiring == runs && worstGain < 1f;
+                Console.WriteLine($"[check] waving the mouse is not drawing: disqualified for moving" +
+                    $" {fouledForMoving}/{runs} times, for firing early {fouledForFiring}/{runs}," +
+                    $" and the aim was put back on the leather to within {worstGain:0.0}px" +
+                    (ok ? " - ok" : "  FAIL"));
+            }
+
             // A man who goes before the word has fouled, and a man who has fouled does not
             // get to shoot you. The screen says take your time; it has to be true. Stand
             // there with your hands down for twenty seconds after Dusty jumps the call and

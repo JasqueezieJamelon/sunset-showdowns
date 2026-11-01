@@ -51,11 +51,9 @@ namespace LLD
         bool _foulSent;
         const float FireGrace = 0.12f;   // how long the host waits so the slower line still counts
 
-        /// How far the cursor may drift during the call before it counts as reaching for the gun.
-        public const float ReadyJitter = 22f;
-
-        Vector2 _readyMouse;
-        bool _readyArmed;
+        // There used to be a ReadyJitter here - how far the cursor could drift during the
+        // count before it was called an early draw. Nothing fouls on cursor drift any more,
+        // so it and the cursor it watched are gone. See the count, below.
 
         // The gun clears the leather pointing at the dirt. From the moment of the call, mouse
         // movement is measured from where it was, so you have to pull the gun up yourself
@@ -274,7 +272,6 @@ namespace LLD
                         HeadlineScale = Def.Sermon ? 0.52f : 1f;
                         Subline = "";
                         _sermonT = 1.1f;
-                        _readyArmed = false;
                         _aimAnchored = false;
                         Sfx.Play("ready", 0.7f);
                     }
@@ -282,14 +279,20 @@ namespace LLD
 
                 case Phase.Count:
                     {
-                        // Hold still until the call. Nudging the mouse enough to swing the gun is
-                        // the same as reaching for it early.
-                        if (!_readyArmed) { _readyMouse = mouse; _readyArmed = true; }
-                        bool moved = Vector2.Distance(mouse, _readyMouse) > ReadyJitter;
+                        // MOVING THE MOUSE IS NOT DRAWING. It used to be: nudge the cursor
+                        // twenty-two pixels before the call and you were disqualified for
+                        // drawing early, with your gun still in the leather and your hand
+                        // still off it. That is a foul for something you did not do, and
+                        // there is nothing to catch anyway - the gun cannot leave the
+                        // holster before the call (the draw is only read in Live), and the
+                        // aim is slammed back down to the leather the instant the call
+                        // comes, so nobody can line a shot up during the count either.
+                        // Moving the mouse early buys you exactly nothing, so it costs you
+                        // exactly nothing. Pulling the trigger early is still a foul,
+                        // because that is a thing you actually did.
 
                         if (IsNet)
                         {
-                            if (moved) { NetFoul("YOU DREW EARLY"); break; }
                             if (firePressed) { NetFoul("YOU FIRED EARLY"); break; }
                             if (Net.HostTime >= NetDrawTime)
                             {
@@ -330,7 +333,6 @@ namespace LLD
                             break;
                         }
 
-                        if (moved) { Foul("YOU DREW EARLY"); break; }
                         if (firePressed) { Foul("YOU FIRED EARLY"); break; }
                         if (_countdown <= 0f) GoLive(mouse, "DRAW!", Rng.F(Def.ReactMin, Def.ReactMax));
                         break;
@@ -790,7 +792,6 @@ namespace LLD
             Headline = "READY";
             Subline = "";
             _foulSent = false;
-            _readyArmed = false;        // the cursor is sampled on the first frame of the call
             _aimAnchored = false;
             Sfx.Play("ready", 0.7f);
         }
