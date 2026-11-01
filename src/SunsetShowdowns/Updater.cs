@@ -37,6 +37,24 @@ namespace LLD
         public const string DefaultFeed =
             "https://api.github.com/repos/JasqueezieJamelon/sunset-showdowns/releases";
 
+        /// <summary>
+        /// Repairs an address saved by an older build. The feed used to be written into
+        /// settings.ini on every exit, so the one an old build chose outlived it: a copy that
+        /// had ever run a 0.1 build kept being handed the game's old repository name and the
+        /// /releases/latest address, and that one leaves out pre-releases, which every build
+        /// of this is. Both are dead ends - the game asked, got a 404, and said nothing - so
+        /// anything of ours that is not the current feed is replaced by it. A feed somewhere
+        /// else entirely is somebody's own choice and is left alone.
+        /// </summary>
+        public static string Freshen(string saved)
+        {
+            if (string.IsNullOrWhiteSpace(saved)) return DefaultFeed;
+            saved = saved.Trim();
+            if (string.Equals(saved, DefaultFeed, StringComparison.OrdinalIgnoreCase)) return saved;
+            bool ours = saved.StartsWith("https://api.github.com/repos/", StringComparison.OrdinalIgnoreCase);
+            return ours ? DefaultFeed : saved;
+        }
+
         static string TempDir => Path.Combine(Path.GetTempPath(), "SunsetShowdowns-update");
 
         public static string ExePath

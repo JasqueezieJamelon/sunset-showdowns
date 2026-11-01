@@ -71,7 +71,7 @@ namespace LLD
                         case "zones": s.ShowZones = v == "1"; break;
                         case "sens": s.Sens = Math.Clamp(ParseF(v, 1f), SensMin, SensMax); break;
                         case "updates": break;    // no longer a setting
-                        case "updateUrl": s.UpdateUrl = v; break;
+                        case "updateUrl": s.UpdateUrl = Updater.Freshen(v); break;
                         case "vsync": s.VSync = v == "1"; break;
                         case "name": s.Name = v; break;
                         case "look": s.Look = ParseLook(v); break;
@@ -99,7 +99,11 @@ namespace LLD
                 sb.AppendLine("zones=" + (ShowZones ? 1 : 0));
                 sb.AppendLine("sens=" + Sens.ToString("0.00", CultureInfo.InvariantCulture));
 
-                sb.AppendLine("updateUrl=" + UpdateUrl);
+                // Only written when somebody has deliberately pointed the game somewhere else.
+                // Writing the ordinary one back every time was how a dead address outlived the
+                // build that chose it: the file kept handing it to every build after.
+                if (!string.Equals(UpdateUrl, Updater.DefaultFeed, StringComparison.OrdinalIgnoreCase))
+                    sb.AppendLine("updateUrl=" + UpdateUrl);
                 sb.AppendLine("vsync=" + (VSync ? 1 : 0));
                 sb.AppendLine("name=" + Name);
                 sb.AppendLine("look=" + LookString());

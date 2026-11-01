@@ -39,7 +39,7 @@ namespace LLD
     public class App
     {
         /// Bumped by the last digit on every change. Stays on 0.1.x until told otherwise.
-        public const string Version = "0.2.0.2";
+        public const string Version = "0.2.0.3";
 
         Settings S;
         RenderTexture2D _scene;
@@ -3030,6 +3030,38 @@ namespace LLD
                     $" reaching {fouledForWaving}/{runs} times, for twenty pixels of resettling" +
                     $" {fouledForTwitching}/{runs}, for firing early {fouledForFiring}/{runs}" +
                     (ok ? " - ok" : "  FAIL"));
+            }
+
+            // A DEAD ADDRESS DOES NOT OUTLIVE THE BUILD THAT CHOSE IT. The update feed was
+            // written back into settings.ini on every exit, so a copy that had ever run an
+            // old build kept handing every later build the old repository name and the
+            // /releases/latest address - which leaves out pre-releases, and every build of
+            // this is one. The game asked, got a 404, and said nothing, so nobody was ever
+            // offered an update again. Anything of ours that is not the current feed is now
+            // repaired on the way in; somebody's own feed elsewhere is left alone.
+            {
+                string[] dead =
+                {
+                    "https://api.github.com/repos/JasqueezieJamelon/last-light-duels/releases/latest",
+                    "https://api.github.com/repos/JasqueezieJamelon/sunset-showdowns/releases/latest",
+                    "",
+                    "   ",
+                };
+                int repaired = 0;
+                foreach (var d in dead) if (Updater.Freshen(d) == Updater.DefaultFeed) repaired++;
+                const string mine = "https://example.com/my-own-feed.json";
+                bool leftAlone = Updater.Freshen(mine) == mine;
+                bool keptCurrent = Updater.Freshen(Updater.DefaultFeed) == Updater.DefaultFeed;
+                // and the newer of two versions has to read as newer, however many parts it has
+                bool ordered = Updater.Compare("0.2.0.2", "0.2.0.1") > 0
+                            && Updater.Compare("0.2.0.1", "0.2") > 0
+                            && Updater.Compare("0.2", "0.1.5") > 0
+                            && Updater.Compare("0.2", "0.2.0.1") < 0
+                            && Updater.Compare("0.2.0.2", "0.2.0.2") == 0;
+                bool ok = repaired == dead.Length && leftAlone && keptCurrent && ordered;
+                Console.WriteLine($"[check] a dead update address gets repaired: {repaired}/{dead.Length} put back" +
+                    $" on the feed, a feed of your own left alone={leftAlone}, the current one kept={keptCurrent}," +
+                    $" newer reads as newer={ordered}" + (ok ? " - ok" : "  FAIL"));
             }
 
             // A man who goes before the word has fouled, and a man who has fouled does not
