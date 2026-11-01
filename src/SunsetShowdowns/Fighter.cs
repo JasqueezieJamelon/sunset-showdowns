@@ -1387,7 +1387,10 @@ namespace LLD
             // out of the silhouette runs most of the way round the wound side, and takes
             // most of the way in to the middle where it is deepest.
             // how wide the bite is, and how deep: both follow how far it actually opened
-            float arc = Art.Lerp(0.95f, 3.0f, HeadOpen);
+            // What is missing from his outline, which is a bite out of the edge and not
+            // half his skull: even an emptied head keeps most of its shape, because the
+            // bone that is gone went out of the TOP of it, not off the side of the picture.
+            float arc = Art.Lerp(0.55f, 1.5f, HeadOpen);
             for (int i = 0; i < n; i++)
             {
                 float a = i / (float)n * MathF.PI * 2f;
@@ -1398,7 +1401,7 @@ namespace LLD
                     if (diff < arc * 0.5f)
                     {
                         float bite = 1f - MathF.Cos(diff / (arc * 0.5f) * MathF.PI * 0.5f);
-                        rr = r * Art.Lerp(Art.Lerp(0.66f, 0.06f, HeadOpen), 1f, bite) * _skullJitter[i];
+                        rr = r * Art.Lerp(Art.Lerp(0.90f, 0.58f, HeadOpen), 1f, bite) * _skullJitter[i];
                     }
                 }
                 outline[i] = c + Dir(a) * rr;
@@ -1475,12 +1478,24 @@ namespace LLD
                     {
                         float a = i / (float)n * MathF.PI * 2f;
                         if (MathF.Abs(Art.WrapPi(a - HeadWoundAngle)) >= arc * 0.5f) continue;
-                        Raylib.DrawCircleV(outline[i], 4.5f * Scale * _skullJitter[i], new Color(128, 16, 20, 255));
+                        Raylib.DrawCircleV(outline[i], 2.2f * Scale * _skullJitter[i], new Color(128, 16, 20, 255));
                     }
-                    // the hole, wherever it landed - cheek, brow or the side of the crown
-                    Vector2 wAt = c + Dir(HeadWoundAngle) * r * 0.5f;
-                    float wRad = r * Art.Lerp(0.24f, 0.80f, HeadOpen);
-                    SkullWound(wAt, wRad);
+                    // The shot itself, and the places the scalp has torn away around it. The
+                    // first is the round's own hole and the others are small - together they
+                    // read as skin lifted off a head in patches, which is what a bullet does,
+                    // rather than one crater the width of his skull, which is a missing head.
+                    Vector2 wAt = c + Dir(HeadWoundAngle) * r * 0.42f;
+                    float wRad = r * 0.2f;
+                    if (_holes != null)
+                        for (int i = 0; i < _holes.Length; i++)
+                        {
+                            var h = _holes[i];
+                            Vector2 at = c + Dir(HeadWoundAngle + h.Ang) * r * h.Dist;
+                            float rad = r * h.Rad;
+                            SkullWound(at, rad, h.Deep, i);
+                            if (i == 0) { wAt = at; wRad = rad; }
+                        }
+                    else SkullWound(wAt, wRad, HeadOpen > 0.62f ? (byte)2 : (byte)1, 0);
                     // what runs out of it starts at the underside of the hole, not the middle,
                     // or the drip is drawn straight over the skull
                     Vector2 low = wAt + new Vector2(0f, wRad * 0.85f);
@@ -1489,9 +1504,9 @@ namespace LLD
                     {
                         // tapering, so it reads as something running down him rather than a bar
                         var bl = new Color(96, 12, 16, 220);
-                        Raylib.DrawLineEx(low, low + new Vector2(0f, run * 0.55f), 5.5f * Scale, bl);
-                        Raylib.DrawLineEx(low + new Vector2(0f, run * 0.5f), low + new Vector2(0f, run * 0.85f), 3.6f * Scale, bl);
-                        Raylib.DrawCircleV(low + new Vector2(0f, run * 0.9f), 3f * Scale, bl);
+                        Raylib.DrawLineEx(low, low + new Vector2(0f, run * 0.55f), 3.4f * Scale, bl);
+                        Raylib.DrawLineEx(low + new Vector2(0f, run * 0.5f), low + new Vector2(0f, run * 0.85f), 2.1f * Scale, bl);
+                        Raylib.DrawCircleV(low + new Vector2(0f, run * 0.9f), 1.9f * Scale, bl);
                     }
                 }
             }
@@ -1515,36 +1530,53 @@ namespace LLD
         /// hole, and in the middle the cavity. Put this anywhere on the head and it reads - on
         /// the cheek it takes the face off, on the crown it lifts the top of the skull.
         /// </summary>
-        void SkullWound(Vector2 at, float rad)
+        /// <summary>
+        /// One tear in a head, and how far down it goes. <paramref name="deep"/> is 0 for skin
+        /// lifted off and blood under it, 1 for bone showing through, 2 for the vault gone
+        /// and brain in the bottom of it. A shot makes one of these where the round went and
+        /// a couple of smaller ones around it where the scalp let go.
+        /// </summary>
+        void SkullWound(Vector2 at, float rad, byte deep, int seed)
         {
             if (Art.InkPass || rad < 1f) return;
             int n = _skullJitter.Length;
+            int s = seed * 7;
+            float J(int i) => _skullJitter[(i + s) % n];
 
             // torn skin round the rim: a thin uneven band, or it reads as a flower
             var torn = new Color(126, 18, 22, 255);
             for (int i = 0; i < n * 2; i++)
             {
                 float a = i / (float)(n * 2) * MathF.PI * 2f;
-                float j = _skullJitter[i % n] * _skullJitter[(i * 5 + 3) % n] + 0.4f;
+                float j = J(i) * J(i * 5 + 3) + 0.4f;
                 Raylib.DrawCircleV(at + Art.FromAngle(a) * rad * (0.88f + j * 0.14f), rad * 0.13f, torn);
             }
             Raylib.DrawCircleV(at, rad * 0.88f, torn);
+
+            // Skin lifted and nothing under it but meat: no bone, no cavity, just a torn
+            // wet hole. Most of the tears round a shot are only this deep.
+            if (deep == 0)
+            {
+                Blob(at, rad * 0.66f, new Color(96, 14, 18, 255), seed * 3);
+                Blob(at, rad * 0.40f, new Color(52, 8, 12, 255), seed * 5 + 2);
+                return;
+            }
 
             // bone under it, ragged where the skin has lifted off
             for (int i = 0; i < n; i++)
             {
                 float a = i / (float)n * MathF.PI * 2f;
-                Raylib.DrawCircleV(at + Art.FromAngle(a) * rad * 0.74f * _skullJitter[i], rad * 0.14f, Bone);
+                Raylib.DrawCircleV(at + Art.FromAngle(a) * rad * 0.74f * J(i), rad * 0.14f, Bone);
             }
-            Blob(at, rad * 0.80f, Bone, 0);
-            Blob(at, rad * 0.66f, BoneDark, 5);
+            Blob(at, rad * 0.80f, Bone, seed);
+            Blob(at, rad * 0.66f, BoneDark, 5 + seed);
 
             // cracks running out of the hole - what says skull rather than a red patch. They stay
             // on the bone; a crack drawn out over the torn skin looks like a whisker.
             var crack = new Color(132, 120, 94, 255);
             for (int i = 0; i < 7; i++)
             {
-                float a = _skullJitter[i * 7 % n] * MathF.PI * 2f;
+                float a = J(i * 7) * MathF.PI * 2f;
                 Vector2 d = Art.FromAngle(a);
                 Vector2 mid = at + d * rad * 0.52f + Art.FromAngle(a + 1.57f) * rad * 0.1f;
                 float w = MathF.Max(1f, rad * 0.05f);
@@ -1556,9 +1588,10 @@ namespace LLD
             // an eye. A hole in the side of a head is a hole; a hole in the TOP of an emptied
             // one is looking down into the cranium, and what is in a cranium is not a black
             // pit, it is brain - pale, pink, and shining wet where the light catches it.
-            Vector2 cav = at + Art.FromAngle(_skullJitter[2] * MathF.PI * 2f) * rad * 0.3f;
-            // brain only shows once enough of the vault is gone to see any
-            if (HeadOpen >= 0.5f)
+            Vector2 cav = at + Art.FromAngle(J(2) * MathF.PI * 2f) * rad * 0.3f;
+            // brain only where the vault has actually gone at THIS tear - the hole the
+            // round made can be down to brain while the ones around it are only down to bone
+            if (deep >= 2)
             {
                 Blob(cav, rad * 0.52f, new Color(104, 30, 34, 255), 11);
                 Blob(cav, rad * 0.44f, Gore.BrainDeep, 3);
@@ -1567,7 +1600,7 @@ namespace LLD
                 // the folds of it, which is what stops it reading as a pink coin
                 for (int i = 0; i < 4; i++)
                 {
-                    float a = _skullJitter[(i * 5) % n] * MathF.PI * 2f;
+                    float a = J(i * 5) * MathF.PI * 2f;
                     Vector2 o = cav + Art.FromAngle(a) * rad * 0.2f;
                     Art.Capsule(o, o + Art.FromAngle(a + 1.9f) * rad * 0.2f, rad * 0.06f, Gore.BrainDeep);
                 }

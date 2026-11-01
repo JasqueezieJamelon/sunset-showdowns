@@ -2915,6 +2915,8 @@ namespace LLD
             // that leaves has to vary with it rather than being a fixed handful.
             {
                 int clean = 0, lifted = 0, opened = 0, emptied = 0, noBrain = 0;
+                float biggest = 0f, torn = 0f;
+                int holesLo = 99, holesHi = 0, counted = 0;
                 int boneLo = 999, boneHi = 0, brainLo = 999, brainHi = 0;
                 const int shots = 40;
                 for (int k = 0; k < shots; k++)
@@ -2937,9 +2939,24 @@ namespace LLD
                     else if (o < 0.79f) opened++;
                     else emptied++;
 
+                    // A BULLET IS NOT THE SIZE OF A HEAD. However far the skull comes open,
+                    // no single tear in it may be a large fraction of his head and the lot
+                    // of them together must leave most of his face still there - the thing
+                    // this replaced drew one crater eight tenths of his skull wide, which is
+                    // not a wound, it is a missing head.
+                    for (int j = 0; j < man.HoleCount; j++)
+                    {
+                        var hl = man.Hole(j);
+                        biggest = MathF.Max(biggest, hl.Rad);
+                        torn += hl.Rad * hl.Rad;      // area, in head-radii squared
+                    }
+                    holesLo = Math.Min(holesLo, man.HoleCount);
+                    holesHi = Math.Max(holesHi, man.HoleCount);
+
                     Gore.Audit(man.L2W(new Vector2(8f, -404f)), vault, 34f * man.Scale,
                                out int bn, out int kn, out _, out _);
                     if (bn == 0) noBrain++;
+                    counted++;
                     boneLo = Math.Min(boneLo, kn); boneHi = Math.Max(boneHi, kn);
                     brainLo = Math.Min(brainLo, bn); brainHi = Math.Max(brainHi, bn);
                 }
@@ -2947,12 +2964,16 @@ namespace LLD
 
                 // every outcome must turn up, some shots must give no brain at all, and the
                 // amount of each must be a range rather than a number
+                float avgTorn = counted > 0 ? torn / counted : 0f;
                 bool ok = clean > 0 && lifted > 0 && opened > 0 && emptied > 0
-                          && noBrain > 0 && boneHi - boneLo >= 3 && brainHi - brainLo >= 4;
+                          && noBrain > 0 && boneHi - boneLo >= 3 && brainHi - brainLo >= 4
+                          && biggest <= 0.34f && avgTorn <= 0.14f && holesLo >= 1 && holesHi <= 5;
                 Console.WriteLine($"[check] no two head shots the same: of {shots}," +
                     $" {clean} went straight through, {lifted} lifted the vault, {opened} took what was" +
                     $" under it, {emptied} emptied him; {noBrain} threw no brain at all;" +
-                    $" bone {boneLo}-{boneHi} plates, brain {brainLo}-{brainHi} lumps" +
+                    $" bone {boneLo}-{boneHi} plates, brain {brainLo}-{brainHi} lumps;" +
+                    $" {holesLo}-{holesHi} tears, widest {biggest * 100f:0}% of the head across," +
+                    $" {avgTorn * 100f:0}% of it torn open on average" +
                     (ok ? " - ok" : "  FAIL"));
             }
 

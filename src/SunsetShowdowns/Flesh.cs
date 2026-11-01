@@ -167,7 +167,47 @@ namespace LLD
             var r = new Random(seed);
             for (int i = 0; i < _skullJitter.Length; i++)
                 _skullJitter[i] = 0.62f + (float)r.NextDouble() * 0.38f;
+
+            // A BULLET IS NOT THE SIZE OF A HEAD.
+            //
+            // What a shot does to a face is lift the skin off it in patches. The hole the
+            // round itself makes is small; around it the scalp tears away from the bone in
+            // two or three more places, and what shows through each of those is whatever
+            // happens to be under that bit - bone over the dome, blood anywhere, and brain
+            // only where the vault has actually gone. One crater the width of his skull,
+            // which is what this used to draw, is not a wound, it is a missing head.
+            int count = 1 + (int)(open * 3.4f + r.NextDouble() * 1.4f);
+            _holes = new SkullHole[Math.Clamp(count, 1, 5)];
+            for (int i = 0; i < _holes.Length; i++)
+            {
+                float f = (float)r.NextDouble();
+                bool main = i == 0;
+                _holes[i] = new SkullHole
+                {
+                    // the first one is the entry itself; the rest are tears around it
+                    Ang = main ? 0f : (float)(r.NextDouble() * 2.0 - 1.0) * (0.55f + open * 0.5f),
+                    Dist = main ? 0.42f : 0.26f + (float)r.NextDouble() * 0.46f,
+                    Rad = main ? 0.13f + open * 0.17f : 0.05f + (float)r.NextDouble() * 0.09f,
+                    // how far down it goes: skin and blood, down to bone, down to brain
+                    Deep = (byte)(main
+                        ? (open > 0.62f ? 2 : open > 0.26f ? 1 : 0)
+                        : (open > 0.70f && f > 0.72f ? 2 : f > 0.38f ? 1 : 0)),
+                };
+            }
         }
+
+        /// <summary>One place the skin has come off, and what is under it there.</summary>
+        public struct SkullHole
+        {
+            public float Ang;    // offset from the wound angle, radians
+            public float Dist;   // out from the middle of the head, as a fraction of it
+            public float Rad;    // as a fraction of the head
+            public byte Deep;    // 0 torn skin and blood, 1 bone, 2 brain
+        }
+
+        SkullHole[] _holes;
+        public int HoleCount => _holes?.Length ?? 0;
+        public SkullHole Hole(int i) => _holes[i];
 
         // ---------- the sandbox ----------
         //
@@ -401,7 +441,7 @@ namespace LLD
                 if (Art.InkPass) continue;
 
                 // the raw edge where it tore away, which is what stops it reading as a sticker
-                Art.Capsule(Vector2.Lerp(left[0], right[0], 0.1f), Vector2.Lerp(left[0], right[0], 0.9f), 2.1f * Scale, edge);
+                Art.Capsule(Vector2.Lerp(left[0], right[0], 0.2f), Vector2.Lerp(left[0], right[0], 0.8f), 1.5f * Scale, edge);
 
                 // a jaw still has teeth in it
                 if (f.Jaw)
